@@ -2211,6 +2211,10 @@ public class MSP430Core extends Chip implements MSP430Constants {
     return reg[PC];
   }
 
+  public void setPC(int pc) {
+    reg[PC] = pc;
+  }
+
   public int getSR() {
       return reg[SR];
   }
@@ -2221,6 +2225,10 @@ public class MSP430Core extends Chip implements MSP430Constants {
 
   public int getRegister(int register) {
       return reg[register];
+  }
+
+  public void setRegister(int register, int value) {
+      reg[register] = value;
   }
 
   public String getAddressAsString(int addr) {

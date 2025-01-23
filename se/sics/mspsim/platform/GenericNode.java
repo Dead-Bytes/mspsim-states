@@ -44,6 +44,7 @@ import java.net.URL;
 import javax.swing.JFrame;
 import se.sics.mspsim.cli.CommandHandler;
 import se.sics.mspsim.cli.DebugCommands;
+import se.sics.mspsim.cli.DivCommand;
 import se.sics.mspsim.cli.FileCommands;
 import se.sics.mspsim.cli.MiscCommands;
 import se.sics.mspsim.cli.NetCommands;
@@ -241,6 +242,7 @@ public abstract class GenericNode extends Chip implements Runnable {
     
     registry.registerComponent("pluginRepository", new PluginRepository());
     registry.registerComponent("debugcmd", new DebugCommands());
+    registry.registerComponent("divcmd", new DivCommand());
     registry.registerComponent("misccmd", new MiscCommands());
     registry.registerComponent("filecmd", new FileCommands());
     registry.registerComponent("statcmd", new StatCommands(cpu, stats));

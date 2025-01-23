@@ -101,6 +101,45 @@ public class SkyNode extends MoteIVNode {
     ArgumentManager config = new ArgumentManager();
     config.handleArguments(args);
     node.setupArgs(config);
+    
+    // Add shutdown hook to save state when program exits
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+        try {
+            node.saveStateToFlash();
+        } catch (Exception e) {
+            System.err.println("Error saving state: " + e.getMessage());
+        }
+    }));
+  }
+
+  // Add new method to save state
+  private void saveStateToFlash() {
+    M25P80 flash = getFlash();
+    if (flash == null) return;
+
+    // Get CPU registers
+    // MSP430 cpu = getCPU();
+    // int[] registers = new int[16]; // MSP430 has 16 registers
+    // for (int i = 0; i < 16; i++) {
+    //     registers[i] = cpu.reg[i];
+    // }
+
+    // Write registers to flash starting at address 0
+    int address = 0;
+    // for (int reg : registers) {
+    //     flash.writeByte(address++, (reg >> 8) & 0xFF);  // High byte
+    //     flash.writeByte(address++, reg & 0xFF);         // Low byte
+    // }
+
+    // Write program counter
+    flash.writeByte(address++, (cpu.getPC() >> 8) & 0xFF);
+    flash.writeByte(address++, cpu.getPC() & 0xFF);
+
+    // Write status register
+    flash.writeByte(address++, (cpu.getSR() >> 8) & 0xFF);
+    flash.writeByte(address++, cpu.getSR() & 0xFF);
+
+    System.out.println("State saved to flash");
   }
 
 }
