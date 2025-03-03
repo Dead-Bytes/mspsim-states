@@ -43,7 +43,9 @@ import se.sics.mspsim.util.ArrayUtils;
 import se.sics.mspsim.util.ComponentRegistry;
 import se.sics.mspsim.util.MapTable;
 
+
 public class MSP430 extends MSP430Core {
+  int DEBUGGING_LEVEL = 0;
 
   private int[] execCounter;
   private int[] trace;
@@ -102,8 +104,8 @@ public class MSP430 extends MSP430Core {
       while (!isStopping) {
 
       if (cycles > nextOut && !debug) {
-	printCPUSpeed(reg[PC]);
-	nextOut = cycles + 20000007;
+        printCPUSpeed(reg[PC]);
+        nextOut = cycles + 1000000;
       }
 
       int pc = emulateOP(-1);
@@ -371,12 +373,18 @@ public class MSP430 extends MSP430Core {
     }
 
     if (DEBUGGING_LEVEL > 0) {
-      System.out.println("Elapsed: " + td
-			 +  " cycDiff: " + cd + " => " + 1000 * (cd / td )
-			 + " cyc/s  cpuDiff:" + cpud + " => "
-			 + 1000 * (cpud / td ) + " cyc/s  "
-			 + (10000 * cpud / cd)/100.0 + "%");
-    }
+        System.out.println("Elapsed: " + td
+        +  " cycDiff: " + cd + " => " + 1000 * (cd / td )
+        + " cyc/s  cpuDiff:" + cpud + " => "
+        + 1000 * (cpud / td ) + " cyc/s  "
+        + (10000 * cpud / cd)/100.0 + "%");
+      }
+
+    // System.out.println("Elapsed: " + td
+    // +  " cycDiff: " + cd + " => " + 1000 * (cd / td )
+    // + " cyc/s  cpuDiff:" + cpud + " => "
+    // + 1000 * (cpud / td ) + " cyc/s  "
+    // + (10000 * cpud / cd)/100.0 + "%");
     lastCPUPercent = (10000 * cpud / cd) / 100.0;
     time = System.currentTimeMillis();
     lastCycles = cycles;

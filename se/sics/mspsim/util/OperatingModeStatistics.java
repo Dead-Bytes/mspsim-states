@@ -106,6 +106,7 @@ public class OperatingModeStatistics {
 
   public DataSource getDataSource(String chip, String modeStr) {
     StatEntry se = getStatEntry(chip);
+    System.err.println("StatEntry: " + se + " mode: " + modeStr);
     if (se != null) {
       int mode = se.chip.getModeByName(modeStr);
       if (mode != -1) { 

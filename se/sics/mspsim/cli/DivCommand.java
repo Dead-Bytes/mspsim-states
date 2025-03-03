@@ -13,16 +13,20 @@ import se.sics.mspsim.util.MultiDataSource;
 import se.sics.mspsim.util.DataSource;
 import se.sics.mspsim.util.OperatingModeStatistics;
 import se.sics.mspsim.core.TimeEvent;
+import se.sics.mspsim.util.DivUtil;
+
+
 
 public class DivCommand implements CommandBundle {
     private ComponentRegistry registry;
     private boolean isRunning = true;
+    private DataSource[] sources;
 
     public void setupCommands(ComponentRegistry registry, CommandHandler handler) {
         this.registry = registry;
         final MSP430 cpu = registry.getComponent(MSP430.class);
         final M25P80 flash = registry.getComponent(M25P80.class);
-        // OperatingModeStatistics stats = new OperatingModeStatistics(cpu);
+        OperatingModeStatistics stats = new OperatingModeStatistics(cpu);
         // Add save command
         handler.registerCommand("save", new BasicCommand("save CPU state to file", "<filename>") {
             @Override
@@ -58,28 +62,8 @@ public class DivCommand implements CommandBundle {
                 
                 context.out.println(flash.getStatus());
                 
+                DivUtil.save_state(context, cpu, flash);
                 
-                int address = 0x1000;
-                
-                // Save PC (Program Counter)
-                flash.writeByte(address, cpu.getPC() & 0xFF);
-                flash.writeByte(address + 1, (cpu.getPC() >> 8) & 0xFF);
-                flash.writeByte(address + 2, (cpu.getPC() >> 16) & 0xFF);
-                flash.writeByte(address + 3, (cpu.getPC() >> 24) & 0xFF);
-                address += 4;
-                
-                // Save all 16 registers
-                for (int i = 0; i < 16; i++) {
-                    int regValue = cpu.getRegister(i);
-                    flash.writeByte(address, regValue & 0xFF);
-                    flash.writeByte(address + 1, (regValue >> 8) & 0xFF);
-                    flash.writeByte(address + 2, (regValue >> 16) & 0xFF);
-                    flash.writeByte(address + 3, (regValue >> 24) & 0xFF);
-                    address += 4;
-                }
-                
-                context.out.println("CPU state saved to flash starting at address 0x1000");
-                context.out.println("PC: $" + cpu.getAddressAsString(cpu.getPC()));
                 return 0;
             }
         });
@@ -149,6 +133,76 @@ public class DivCommand implements CommandBundle {
             }
         });
 
+        handler.registerCommand("battery", new BasicCommand("show battery statistics", "") {
+            @Override
+            public int executeCommand(CommandContext context){
+                context.out.println("Battery statistics");
+                context.out.println("battery: " + cpu.getCPUPercent());
+                return 0;
+            }
+        });
+
+
+        // // add the command battery that will call the getDoubleValue in the OperateModeStatistics.java
+        // handler.registerCommand("battery", new BasicCommand("show battery statistics", "<frequency>") {
+        //     @Override
+        //     public int executeCommand(CommandContext context) {
+        //         if (context.getArgumentCount() != 1) {
+        //             context.err.println("Usage: battery <frequency>");
+        //             return 1;
+        //         }
+
+        //         double frequency = context.getArgumentAsDouble(0);
+        //         if (frequency <= 0) {
+        //             context.err.println("Frequency must be positive");
+        //             return 1;
+        //         }
+
+        //         // Initialize data sources if not already done
+        //         if (sources == null) {
+        //             sources = new DataSource[] {
+        //                 stats.getDataSource("CPU", 0),  // CPU mode 0
+        //                 // stats.getMultiDataSource("Radio"),  // Radio modes
+        //                 // stats.getMultiDataSource("Flash")   // Flash modes
+        //             };
+        //         }
+
+        //         isRunning = true;
+        //         context.out.println("Starting battery statistics at " + frequency + "Hz");
+                
+        //         // Schedule periodic updates
+        //         cpu.scheduleTimeEventMillis(new TimeEvent(0) {
+        //             @Override
+        //             public void execute(long t) {
+        //                 if (!isRunning) return;
+                        
+        //                 // Schedule next update
+        //                 cpu.scheduleTimeEventMillis(this, 1000.0 / frequency);
+                        
+        //                 // Print values for each data source
+        //                 for (int j = 0; j < sources.length; j++) {
+        //                     if (j > 0) context.out.print(' ');
+        //                     Object s = sources[j];
+                            
+        //                     if (s instanceof MultiDataSource) {
+        //                         MultiDataSource ds = (MultiDataSource) s;
+        //                         for (int k = 0, m = ds.getModeMax(); k <= m; k++) {
+        //                             if (k > 0) context.out.print(' ');
+        //                             double value = ds.getDoubleValue(k);
+        //                             context.out.printf("%.2f", value);
+        //                         }
+        //                     } else if (s instanceof DataSource) {
+        //                         double value = ((DataSource)s).getDoubleValue();
+        //                         context.out.printf("%.2f", value);
+        //                     }
+        //                 }
+        //                 context.out.println();
+        //             }
+        //         }, 1000.0 / frequency);
+                
+        //         return 0;
+        //     }
+        // });
         // handler.registerCommand("battery", new BasicCommand("show battery in double", "<filename>") {
         //     @Override
         //     public int executeCommand(CommandContext context) {

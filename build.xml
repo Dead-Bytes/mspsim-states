@@ -54,7 +54,7 @@
   </target>
 
   <target name="runsky" depends="jar" description="run MSPSim with platform Sky">
-    <property name="FIRMWAREFILE" value="firmware/sky/blink.sky"/>
+    <property name="FIRMWAREFILE" value="firmware/sky/energest-demo.sky"/>
     <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
       <arg value="${FIRMWAREFILE}"/>
       <arg line="${ARGS}"/>

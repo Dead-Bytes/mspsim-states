@@ -119,6 +119,7 @@ public class Main {
       System.exit(1);
     }
     node.setupArgs(config);
+    node.stop();
   }
 
 }

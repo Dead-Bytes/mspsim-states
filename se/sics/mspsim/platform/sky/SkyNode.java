@@ -101,6 +101,7 @@ public class SkyNode extends MoteIVNode {
     ArgumentManager config = new ArgumentManager();
     config.handleArguments(args);
     node.setupArgs(config);
+    node.stop();
     
     // Add shutdown hook to save state when program exits
     Runtime.getRuntime().addShutdownHook(new Thread(() -> {

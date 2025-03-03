@@ -33,6 +33,7 @@
  * Created : Mon Feb 11 2008
  */
 package se.sics.mspsim.cli;
+import se.sics.mspsim.chip.M25P80;
 import se.sics.mspsim.core.DbgInstruction;
 import se.sics.mspsim.core.DisAsm;
 import se.sics.mspsim.core.EmulationException;
@@ -50,6 +51,7 @@ import se.sics.mspsim.core.TimeEvent;
 import se.sics.mspsim.platform.GenericNode;
 import se.sics.mspsim.util.ComponentRegistry;
 import se.sics.mspsim.util.DebugInfo;
+import se.sics.mspsim.util.DivUtil;
 import se.sics.mspsim.util.ELF;
 import se.sics.mspsim.util.GDBStubs;
 import se.sics.mspsim.util.MapEntry;
@@ -333,7 +335,16 @@ public class DebugCommands implements CommandBundle {
                 return -1;
             }
             try {
-              node.step(nr);
+              double battery = cpu.getCPUPercent();
+              if (battery > 50.00){
+                node.step(nr);
+              }
+              else if (battery < 50){
+                context.out.println("Battery lower then 50 % saving the state");
+                final M25P80 flash = registry.getComponent(M25P80.class);
+                DivUtil.save_state(context, cpu, flash);
+                node.step(nr);
+              }
             } catch (Exception e) {
               e.printStackTrace(context.out);
             }
