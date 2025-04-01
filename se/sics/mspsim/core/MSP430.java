@@ -144,6 +144,7 @@ public class MSP430 extends MSP430Core {
                 } else if (cpuPercent < 20 && cpuPercent > 0) {
                     System.out.println("Saving state to flash: " + cpuPercent + "%");
                     saveStateToFlash();
+
                 }
             }
 
@@ -189,6 +190,8 @@ public class MSP430 extends MSP430Core {
         // Set flag indicating state was saved
         memory[0xFFFF] = 0x02;
         System.out.println("State saved to flash successfully");
+        // also save in binary file in directory /saves
+        
     } catch (Exception e) {
         System.err.println("Error saving state: " + e.getMessage());
     }
