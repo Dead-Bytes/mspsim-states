@@ -132,7 +132,7 @@ public class MSP430 extends MSP430Core {
             if (cycles > nextOut) {
                 // This call updates lastCPUPercent
                 printCPUSpeed(reg[PC]);
-                nextOut = cycles + 1000000;
+                nextOut = cycles + 250;
 
                 // Now check the CPU percentage for battery simulation
                 double cpuPercent = getCPUPercent();

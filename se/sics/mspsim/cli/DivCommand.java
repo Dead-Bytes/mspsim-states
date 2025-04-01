@@ -142,6 +142,15 @@ public class DivCommand implements CommandBundle {
             }
         });
 
+        handler.registerCommand("run_with_checkpoint", new BasicCommand("show battery statistics", "") {
+            @Override
+            public int executeCommand(CommandContext context){
+                context.out.println("Runing the cpu step by step by also applying runtime checkpoint current checkpoint startegy, \n - if battery > 50% no checkpointing is performed, \n - when 20 < battery < 50 % start checking battery and limiting instucion, \n - when battery < 20% start checkpointing .");
+                context.out.println("battery: " + cpu.getCPUPercent());
+                return 0;
+            }
+        });
+
 
         // // add the command battery that will call the getDoubleValue in the OperateModeStatistics.java
         // handler.registerCommand("battery", new BasicCommand("show battery statistics", "<frequency>") {

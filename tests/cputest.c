@@ -431,7 +431,7 @@ main(void)
   testUSART();
   testTimer();
   busyCalibrateDco();
-  /*  printf("PROFILE\n"); */
+  printf("PROFILE\n"); 
   printf("EXIT\n");
 
   /* Short delay to allow serial output to finish */
