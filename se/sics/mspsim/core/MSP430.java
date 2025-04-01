@@ -135,21 +135,21 @@ public class MSP430 extends MSP430Core {
                 // This call updates lastCPUPercent
                 printCPUSpeed(reg[PC]);
                 nextOut = cycles + 1000;
-                double cpuPercent = getCPUPercent();
-                System.out.println("Saving state to flash: " + cpuPercent + "%");
-                saveStateToFlash();
-                // // Now check the CPU percentage for battery simulation
                 // double cpuPercent = getCPUPercent();
-                // if (cpuPercent > 50) {
-                //     System.out.println("Battery sufficient: " + cpuPercent + "%");
-                // } else if (cpuPercent < 50 && cpuPercent > 20) {
-                //     System.out.println("Consider checkpoint: " + cpuPercent + "%");
-                //     memory[0xFFFF] = 0x01;
-                // } else if (cpuPercent < 20 && cpuPercent > 0) {
-                //     System.out.println("Saving state to flash: " + cpuPercent + "%");
-                //     saveStateToFlash();
+                // System.out.println("Saving state to flash: " + cpuPercent + "%");
+                // saveStateToFlash();
+                // Now check the CPU percentage for battery simulation
+                double cpuPercent = getCPUPercent();
+                if (cpuPercent > 50) {
+                    System.out.println("Battery sufficient: " + cpuPercent + "%");
+                } else if (cpuPercent < 50 && cpuPercent > 20) {
+                    System.out.println("Consider checkpoint: " + cpuPercent + "%");
+                    memory[0xFFFF] = 0x01;
+                } else if (cpuPercent < 20 && cpuPercent > 0) {
+                    System.out.println("Saving state to flash: " + cpuPercent + "%");
+                    saveStateToFlash();
 
-                // }
+                }
             }
 
             // Handle sleep timing
