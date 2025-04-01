@@ -36,6 +36,8 @@
  */
 
 package se.sics.mspsim.core;
+import java.io.DataOutputStream;
+import java.io.FileOutputStream;
 import java.io.PrintStream;
 
 import se.sics.mspsim.chip.M25P80;
@@ -133,19 +135,21 @@ public class MSP430 extends MSP430Core {
                 // This call updates lastCPUPercent
                 printCPUSpeed(reg[PC]);
                 nextOut = cycles + 250;
-
-                // Now check the CPU percentage for battery simulation
                 double cpuPercent = getCPUPercent();
-                if (cpuPercent > 50) {
-                    System.out.println("Battery sufficient: " + cpuPercent + "%");
-                } else if (cpuPercent < 50 && cpuPercent > 20) {
-                    System.out.println("Consider checkpoint: " + cpuPercent + "%");
-                    memory[0xFFFF] = 0x01;
-                } else if (cpuPercent < 20 && cpuPercent > 0) {
-                    System.out.println("Saving state to flash: " + cpuPercent + "%");
-                    saveStateToFlash();
+                System.out.println("Saving state to flash: " + cpuPercent + "%");
+                saveStateToFlash();
+                // // Now check the CPU percentage for battery simulation
+                // double cpuPercent = getCPUPercent();
+                // if (cpuPercent > 50) {
+                //     System.out.println("Battery sufficient: " + cpuPercent + "%");
+                // } else if (cpuPercent < 50 && cpuPercent > 20) {
+                //     System.out.println("Consider checkpoint: " + cpuPercent + "%");
+                //     memory[0xFFFF] = 0x01;
+                // } else if (cpuPercent < 20 && cpuPercent > 0) {
+                //     System.out.println("Saving state to flash: " + cpuPercent + "%");
+                //     saveStateToFlash();
 
-                }
+                // }
             }
 
             // Handle sleep timing
@@ -191,6 +195,20 @@ public class MSP430 extends MSP430Core {
         memory[0xFFFF] = 0x02;
         System.out.println("State saved to flash successfully");
         // also save in binary file in directory /saves
+        String filename = String.format("saves/%s.bin", reg[PC]);
+                
+        DataOutputStream out = new DataOutputStream(new FileOutputStream(filename));
+        // Save PC (Program Counter)
+        out.writeInt(cpu.getPC());
+        
+        // Save all 16 registers
+        for (int i = 0; i < 16; i++) {
+            out.writeInt(cpu.getRegister(i));
+        }
+        
+        System.out.println("CPU state saved to: " + filename);
+        System.out.println("PC: $" + cpu.getAddressAsString(cpu.getPC()));
+        
         
     } catch (Exception e) {
         System.err.println("Error saving state: " + e.getMessage());
