@@ -134,7 +134,7 @@ public class MSP430 extends MSP430Core {
             if (cycles > nextOut) {
                 // This call updates lastCPUPercent
                 printCPUSpeed(reg[PC]);
-                nextOut = cycles + 250;
+                nextOut = cycles + 1000;
                 double cpuPercent = getCPUPercent();
                 System.out.println("Saving state to flash: " + cpuPercent + "%");
                 saveStateToFlash();
