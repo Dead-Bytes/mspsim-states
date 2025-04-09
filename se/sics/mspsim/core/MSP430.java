@@ -37,7 +37,9 @@
 
 package se.sics.mspsim.core;
 import java.io.DataOutputStream;
+import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.PrintStream;
 
 import se.sics.mspsim.chip.M25P80;
@@ -136,20 +138,20 @@ public class MSP430 extends MSP430Core {
                 printCPUSpeed(reg[PC]);
                 nextOut = cycles + 1000;
                 double cpuPercent = getCPUPercent();
-                System.out.println("Saving state to flash: " + cpuPercent + "%");
-                saveStateToFlash();
-                // // Now check the CPU percentage for battery simulation
+                // System.out.println("Saving state to flash: " + cpuPercent + "%");
+                // saveStateToFlash();
+                // Now check the CPU percentage for battery simulation
                 // double cpuPercent = getCPUPercent();
-                // if (cpuPercent > 50) {
-                //     System.out.println("Battery sufficient: " + cpuPercent + "%");
+                if (cpuPercent > 50) {
+                    System.out.println("Battery sufficient: " + cpuPercent + "%");
                 // } else if (cpuPercent < 50 && cpuPercent > 20) {
                 //     System.out.println("Consider checkpoint: " + cpuPercent + "%");
                 //     memory[0xFFFF] = 0x01;
-                // } else if (cpuPercent < 20 && cpuPercent > 0) {
-                //     System.out.println("Saving state to flash: " + cpuPercent + "%");
-                //     saveStateToFlash();
+                } else if (cpuPercent < 20 && cpuPercent > 0) {
+                    System.out.println("Saving state to flash: " + cpuPercent + "%");
+                    saveStateToFlash();
 
-                // }
+                }
             }
 
             // Handle sleep timing
@@ -171,50 +173,110 @@ public class MSP430 extends MSP430Core {
   private void saveStateToFlash() {
     M25P80 flash = registry.getComponent(M25P80.class, "xmem");
     if (flash == null) {
-        System.err.println("Flash component not available");
+        System.err.println("Error: Flash component not available");
         return;
     }
 
+    // Create saves directory if it doesn't exist
+    File saveDir = new File("saves");
+    if (!saveDir.exists()) {
+        if (!saveDir.mkdirs()) {
+            System.err.println("Error: Could not create saves directory");
+            return;
+        }
+    }
+
+    DataOutputStream out = null;
     try {
-        // Save Program Counter (PC)
-        flash.writeByte(0, (reg[PC] >> 8) & 0xFF);
-        flash.writeByte(1, reg[PC] & 0xFF);
+        // Save basic CPU state to flash memory
+        try {
+            // Save Program Counter (PC)
+            flash.writeByte(0, (reg[PC] >> 8) & 0xFF);
+            flash.writeByte(1, reg[PC] & 0xFF);
 
-        // Save Status Register (SR)
-        flash.writeByte(2, (reg[SR] >> 8) & 0xFF);
-        flash.writeByte(3, reg[SR] & 0xFF);
+            // Save Status Register (SR)
+            flash.writeByte(2, (reg[SR] >> 8) & 0xFF);
+            flash.writeByte(3, reg[SR] & 0xFF);
 
-        // Save general purpose registers (R4-R15)
-        int addr = 4;
-        for (int i = 4; i <= 15; i++) {
-            flash.writeByte(addr++, (reg[i] >> 8) & 0xFF);
-            flash.writeByte(addr++, reg[i] & 0xFF);
+            // Save general purpose registers (R4-R15)
+            int addr = 4;
+            for (int i = 4; i <= 15; i++) {
+                flash.writeByte(addr++, (reg[i] >> 8) & 0xFF);
+                flash.writeByte(addr++, reg[i] & 0xFF);
+            }
+
+            // Set flag indicating state was saved
+            memory[0xFFFF] = 0x02;
+            System.out.println("CPU state saved to flash successfully");
+        } catch (Exception e) {
+            System.err.println("Error writing to flash memory: " + e.getMessage());
+            e.printStackTrace();
         }
 
-        // Set flag indicating state was saved
-        memory[0xFFFF] = 0x02;
-        System.out.println("State saved to flash successfully");
-        // also save in binary file in directory /saves
-        String filename = String.format("saves/%s.bin", reg[PC]);
-                
-        DataOutputStream out = new DataOutputStream(new FileOutputStream(filename));
+        // Save to binary file as backup
+        String filename = String.format("saves/cpu_state_%08X.bin", reg[PC]);
+        out = new DataOutputStream(new FileOutputStream(filename));
+        
         // Save PC (Program Counter)
-        out.writeInt(cpu.getPC());
+        out.writeInt(reg[PC]);
+        
+        // Save SR (Status Register)
+        out.writeInt(reg[SR]);
         
         // Save all 16 registers
         for (int i = 0; i < 16; i++) {
-            out.writeInt(cpu.getRegister(i));
+            out.writeInt(reg[i]);
         }
         
-        System.out.println("CPU state saved to: " + filename);
-        System.out.println("PC: $" + cpu.getAddressAsString(cpu.getPC()));
+        // Save RAM content
+        // Define RAM boundaries - typically from 0x0200 to 0x09FF for MSP430
+        // Adjust these values based on your specific MSP430 model
+        final int RAM_START = 0x0200;
+        final int RAM_END = 0x09FF;
         
+        // First write RAM size
+        out.writeInt(RAM_END - RAM_START + 1);
         
+        // Write RAM start address
+        out.writeInt(RAM_START);
+        
+        // Write RAM contents
+        for (int i = RAM_START; i <= RAM_END; i++) {
+            out.writeByte(memory[i] & 0xFF);
+        }
+        
+        // Save peripheral registers state if needed
+        // This is model-specific, so we'll include a count of peripherals
+        out.writeInt(0); // For now, no peripherals saved
+        
+        // Save interrupt state
+        out.writeBoolean(interruptsEnabled);
+        out.writeInt(interruptMax);
+        out.writeInt(servicedInterrupt);
+        
+        System.out.println("CPU state and RAM saved to: " + filename);
+        System.out.println("PC: 0x" + Integer.toHexString(reg[PC]));
+        System.out.println("RAM: " + (RAM_END - RAM_START + 1) + " bytes saved");
+    } catch (IOException e) {
+        System.err.println("Error saving state to file: " + e.getMessage());
+        e.printStackTrace();
     } catch (Exception e) {
-        System.err.println("Error saving state: " + e.getMessage());
+        System.err.println("Unexpected error during state save: " + e.getMessage());
+        e.printStackTrace();
+    } finally {
+        // Close resources properly
+        if (out != null) {
+            try {
+                out.close();
+            } catch (IOException e) {
+                System.err.println("Error closing output stream: " + e.getMessage());
+            }
+        }
+        
+        // Log completion status
+        System.out.println("State save operation completed");
     }
-  }
-
+}
   /* Use stepInstructions or stepMicros instead */
   @Deprecated public long step() throws EmulationException {
     return stepMicros(1, 1);
