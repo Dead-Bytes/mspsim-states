@@ -108,6 +108,8 @@ public class MSP430 extends MSP430Core {
   }
 
   private void run() throws EmulationException {
+    int batch_cycle = 0;
+
     try {
         while (!isStopping) {
             // First execute some instructions to accumulate cycles
@@ -137,6 +139,7 @@ public class MSP430 extends MSP430Core {
                 // This call updates lastCPUPercent
                 printCPUSpeed(reg[PC]);
                 nextOut = cycles + 1000;
+                batch_cycle = batch_cycle + 1000;
                 // double cpuPercent = getCPUPercent();
                 // System.out.println("Saving state to flash: " + cpuPercent + "%");
                 // saveStateToFlash();
@@ -144,10 +147,7 @@ public class MSP430 extends MSP430Core {
                 double cpuPercent = getCPUPercent();
                 if (cpuPercent > 50) {
                     System.out.println("Battery sufficient: " + cpuPercent + "%");
-                } else if (cpuPercent < 50 && cpuPercent > 20) {
-                    System.out.println("Consider checkpoint: " + cpuPercent + "%");
-                    memory[0xFFFF] = 0x01;
-                } else if (cpuPercent < 20 && cpuPercent > 0) {
+                } else if (cpuPercent < 50 ) {
                     System.out.println("Saving state to flash: " + cpuPercent + "%");
                     saveStateToFlash();
 
