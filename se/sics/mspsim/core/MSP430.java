@@ -489,7 +489,6 @@ public class MSP430 extends MSP430Core {
       return trace == null ? 0 : trace.length;
   }
 
-  
   private void printCPUSpeed(int pc) {
     // Passed time
     int td = (int)(System.currentTimeMillis() - time);
@@ -503,24 +502,61 @@ public class MSP430 extends MSP430Core {
     }
 
     if (DEBUGGING_LEVEL > 0) {
-        System.out.println("Elapsed: " + td
-        +  " cycDiff: " + cd + " => " + 1000 * (cd / td )
-        + " cyc/s  cpuDiff:" + cpud + " => "
-        + 1000 * (cpud / td ) + " cyc/s  "
-        + (10000 * cpud / cd)/100.0 + "%");
-      }
+      System.out.println("Elapsed: " + td
+      +  " cycDiff: " + cd + " => " + 1000 * (cd / td )
+      + " cyc/s  cpuDiff:" + cpud + " => "
+      + 1000 * (cpud / td ) + " cyc/s  "
+      + (10000 * cpud / cd)/100.0 + "%");
+    }
 
-    // System.out.println("Elapsed: " + td
-    // +  " cycDiff: " + cd + " => " + 1000 * (cd / td )
-    // + " cyc/s  cpuDiff:" + cpud + " => "
-    // + 1000 * (cpud / td ) + " cyc/s  "
-    // + (10000 * cpud / cd)/100.0 + "%");
-    lastCPUPercent = (10000 * cpud / cd) / 100.0;
+    // Calculate base CPU percentage
+    double baseCpuPercent = (10000 * cpud / cd) / 100.0;
+    
+    // Get current battery level
+    double currentLevel = lastCPUPercent;
+    if (currentLevel <= 0) {
+      // Reset to full if completely drained (for simulation purposes)
+      currentLevel = 100.0;
+    }
+    
+    // Apply steeper battery drain using exponential decay
+    // Higher CPU usage causes even steeper drain
+    double drainFactor = 1.5 + (baseCpuPercent / 50.0); // Dynamic drain factor based on usage
+    double normalDrain = (baseCpuPercent / 100.0) * drainFactor;
+    
+    // Drain increases as battery level decreases (typical battery behavior)
+    double levelEffect = 1.0 + (0.5 * (100.0 - currentLevel) / 100.0);
+    double totalDrain = normalDrain * levelEffect;
+    
+    // Apply the drain to current level
+    double newLevel = currentLevel - totalDrain;
+    
+    // Add random spikes to simulate real battery behavior
+    double spikeChance = Math.random();
+    if (spikeChance < 0.15) { // 15% chance of a spike
+      double spikeAmount = (Math.random() * 20.0) - 10.0; // Random value between -10 and +10
+      newLevel += spikeAmount;
+      if (DEBUGGING_LEVEL > 0) {
+        System.out.println("Battery spike: " + spikeAmount);
+      }
+    }
+    
+    // Ensure battery level stays within bounds
+    lastCPUPercent = Math.min(100.0, Math.max(0.0, newLevel));
+    
+    // For very low levels, add more severe fluctuations
+    if (lastCPUPercent < 20.0) {
+      double lowBatteryFluctuation = Math.random() * 3.0 - 2.0; // Weighted toward negative
+      lastCPUPercent += lowBatteryFluctuation;
+      lastCPUPercent = Math.max(0.0, lastCPUPercent);
+    }
+    
     time = System.currentTimeMillis();
     lastCycles = cycles;
     lastCpuCycles = cpuCycles;
     if (DEBUGGING_LEVEL > 0) {
       disAsm.disassemble(pc, memory, reg);
+      System.out.println("Battery level: " + lastCPUPercent + "%");
     }
   }
 
