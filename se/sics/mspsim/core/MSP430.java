@@ -147,7 +147,12 @@ public class MSP430 extends MSP430Core {
                 double cpuPercent = getCPUPercent();
                 if (cpuPercent > 50) {
                     System.out.println("Battery sufficient: " + cpuPercent + "%");
-                } else if (cpuPercent < 50 ) {
+                } else if (cpuPercent < 50 && cpuPercent > 20 ) {
+                    if (batch_cycle > 20000){
+                      System.out.println("Batch checkpointing limit reached.");
+                      saveStateToFlash();
+                    }
+                } else if (cpuPercent < 20) {
                     System.out.println("Saving state to flash: " + cpuPercent + "%");
                     saveStateToFlash();
 
