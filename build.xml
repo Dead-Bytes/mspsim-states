@@ -53,8 +53,16 @@
     </java>
   </target>
 
-  <target name="runsky" depends="jar" description="run MSPSim with platform Sky">
+  <target name="rundjikstra" depends="jar" description="run MSPSim with platform Sky">
     <property name="FIRMWAREFILE" value="benchmarks/djikstra.ihex"/>
+    <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
+      <arg value="${FIRMWAREFILE}"/>
+      <arg line="${ARGS}"/>
+    </java>
+  </target>
+
+  <target name="runcuckoo" depends="jar" description="run MSPSim with platform Sky">
+    <property name="FIRMWAREFILE" value="benchmarks/cuckoo.ihex"/>
     <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
       <arg value="${FIRMWAREFILE}"/>
       <arg line="${ARGS}"/>

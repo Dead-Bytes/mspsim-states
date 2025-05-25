@@ -1,4 +1,4 @@
- /**
+/**
  * Copyright (c) 2007, Swedish Institute of Computer Science.
  * All rights reserved.
  *
@@ -41,13 +41,10 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
-
 import se.sics.mspsim.chip.M25P80;
-import se.sics.mspsim.cli.CommandContext;
 import se.sics.mspsim.profiler.SimpleProfiler;
 import se.sics.mspsim.util.ArrayUtils;
 import se.sics.mspsim.util.ComponentRegistry;
-import se.sics.mspsim.util.DivUtil;
 import se.sics.mspsim.util.MapTable;
 
 
@@ -75,6 +72,9 @@ public class MSP430 extends MSP430Core {
   private DisAsm disAsm;
 
   private SimEventListener[] simEventListeners;
+
+  // Add this field to track checkpoint events
+  private boolean checkpointPending = false;
 
   /**
    * Creates a new <code>MSP430</code> instance.
@@ -107,6 +107,16 @@ public class MSP430 extends MSP430Core {
     }
   }
 
+  int batchCycles = 0;
+  // // Globals
+  double batteryPercent = 0; // proxy for energy
+  double prevBatteryPercent = batteryPercent;
+  boolean usePeriodic = true;
+  long nextSampleCycle = 0;
+  long samplingInterval = 1000; // will adapt based on battery
+  double highThreshold = 60.0;   // Above this: periodic, maybe skip
+  double mediumThreshold = 40.0; // Between: periodic, no skip
+  double lowThreshold = 20.0;    // Below: JIT
   private void run() throws EmulationException {
     try {
         while (!isStopping) {
@@ -132,36 +142,102 @@ public class MSP430 extends MSP430Core {
                 }
             }
 
-            // Check CPU metrics periodically
-            if (cycles > nextOut) {
-                // This call updates lastCPUPercent
-                printCPUSpeed(reg[PC]);
-                nextOut = cycles + 1000;
-                // double cpuPercent = getCPUPercent();
-                // System.out.println("Saving state to flash: " + cpuPercent + "%");
-                // saveStateToFlash();
-                // Now check the CPU percentage for battery simulation
-                double cpuPercent = getCPUPercent();
-                if (cpuPercent > 50) {
-                    System.out.println("Battery sufficient: " + cpuPercent + "%");
-                } else if (cpuPercent < 50 && cpuPercent > 20) {
-                    System.out.println("Consider checkpoint: " + cpuPercent + "%");
-                    memory[0xFFFF] = 0x01;
-                } else if (cpuPercent < 20 && cpuPercent > 0) {
-                    System.out.println("Saving state to flash: " + cpuPercent + "%");
-                    saveStateToFlash();
+            // //  uncomment below lines to use proposed checkpointing
+            // // Check CPU metrics periodically
+            // if (cycles > nextOut) {
+            //     // This call updates lastCPUPercent
+            //     printCPUSpeed(reg[PC]);
+            //     nextOut = cycles + 1000;
+            //     // double cpuPercent = getCPUPercent();
+            //     // System.out.println("Saving state to flash: " + cpuPercent + "%");
+            //     // saveStateToFlash();
+            //     // Now check the CPU percentage for battery simulation
+            //     double cpuPercent = getCPUPercent();
+            //     if (cpuPercent > 50) {
+            //         batchCycles +=1000; // Reset batch cycles if battery is sufficient
+            //         System.out.println("Battery sufficient: " + cpuPercent + "%");
+            //     } else if (cpuPercent < 50 && cpuPercent > 20) {
+            //         if (batchCycles > 25000) {
+            //             System.out.println("Saving state to flash: " + cpuPercent + "%");
+            //             saveStateToFlash();
+            //             batchCycles = 0;
+            //         }
+            //         batchCycles += 1000; // Accumulate cycles for potential save
+            //     } else if (cpuPercent < 20 && cpuPercent > 0) {
+            //         System.out.println("Saving state to flash: " + cpuPercent + "%");
+            //         saveStateToFlash();
+            //     }
+            //   }
 
-                }
-            }
+
+            // uncomment below lines to use JIT checkpointing
+            // if (cycles > nextOut) {
+            //     // This call updates lastCPUPercent
+            //     printCPUSpeed(reg[PC]);
+            //     nextOut = cycles + 100; // change this value for sensing battery at different time.
+            //     double cpuPercent = getCPUPercent();
+            //     if (cpuPercent <20) {
+            //       System.out.println("Battery critical: " + cpuPercent + "%, saving state to flash");
+            //       saveStateToFlash();
+            //     }
+            // }
+
+            // // Uncomment to use periodic
+            // if (cycles > nextOut) {
+            //     // This call updates lastCPUPercent
+            //     printCPUSpeed(reg[PC]);
+            //     nextOut = cycles + 1000; // change this value for sensing battery at different time.
+            //     double cpuPercent = getCPUPercent();
+            //     saveStateToFlash();
+            // }
+
+            // uncoment this to use adaptive
 
             // Handle sleep timing
-            if (cycles > nextSleep) {
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    // Ignore
-                }
-                nextSleep = cycles + (long)(rate * dcoFrq / 10);
+            if (cycles >  nextOut) {
+              if (cycles > nextSampleCycle) {
+                  printCPUSpeed(reg[PC]);
+                  nextOut = cycles + 1000; 
+                  prevBatteryPercent = batteryPercent;
+                  batteryPercent = getCPUPercent();
+                  double deltaBattery = batteryPercent - prevBatteryPercent;
+
+                  // Update checkpointing mode
+                  if (batteryPercent > highThreshold) {
+                      usePeriodic = true;
+
+                      // Checkpoint skipping
+                      if (deltaBattery >= 0) {
+                          System.out.println("Battery stable/increasing (" + batteryPercent + "%), skipping checkpoint");
+                          // Skip checkpoint
+                      } else {
+                          System.out.println("Battery dropping slowly, doing periodic checkpoint");
+                          saveStateToFlash(); // Not skipping
+                      }
+
+                  } else if (batteryPercent > mediumThreshold) {
+                      usePeriodic = true;
+                      System.out.println("Medium battery (" + batteryPercent + "%), saving checkpoint");
+                      saveStateToFlash();
+
+                  } else if (batteryPercent <= lowThreshold) {
+                      usePeriodic = false;
+                      System.out.println("Low battery (" + batteryPercent + "%), switching to JIT");
+                      saveStateToFlash();
+                  }
+
+                  // Adaptive sampling interval (simple version)
+                  if (batteryPercent > 70) {
+                      samplingInterval = 2000; // sample less frequently
+                  } else if (batteryPercent > 40) {
+                      samplingInterval = 1000;
+                  } else {
+                      samplingInterval = 500;  // sample more frequently
+                  }
+
+                  nextSampleCycle = cycles + samplingInterval;
+              }
+
             }
         }
         isStopping = isBreaking = false;
@@ -208,6 +284,7 @@ public class MSP430 extends MSP430Core {
             // Set flag indicating state was saved
             memory[0xFFFF] = 0x02;
             System.out.println("CPU state saved to flash successfully");
+            checkpointPending = true; // <-- Add this line
         } catch (Exception e) {
             System.err.println("Error writing to flash memory: " + e.getMessage());
             e.printStackTrace();
@@ -488,77 +565,117 @@ public class MSP430 extends MSP430Core {
   public int getTraceSize() {
       return trace == null ? 0 : trace.length;
   }
+    private final java.util.Random rng = new java.util.Random(12345L); // Fixed seed for reproducible battery simulation
+    private java.io.PrintWriter batteryLogWriter;
+    private long startTime;
+    private boolean batteryLoggingInitialized = false;// Track if recharge has happened
+    private double baselineLevel = 100.0; // Start with a reasonable baseline battery level
+    private boolean failureTriggered = false;
 
-  private void printCPUSpeed(int pc) {
-    // Passed time
+private void printCPUSpeed(int pc) {
+    // Initialize battery logging if not already done
+    if (!batteryLoggingInitialized) {
+        initBatteryLogging();
+        batteryLoggingInitialized = true;
+    }
+
     int td = (int)(System.currentTimeMillis() - time);
-    // Passed total cycles
     long cd = (cycles - lastCycles);
-    // Passed "active" CPU cycles
     long cpud = (cpuCycles - lastCpuCycles);
 
-    if (td == 0 || cd == 0) {
-      return;
-    }
+    if (td == 0 || cd == 0) return;
 
-    if (DEBUGGING_LEVEL > 0) {
-      System.out.println("Elapsed: " + td
-      +  " cycDiff: " + cd + " => " + 1000 * (cd / td )
-      + " cyc/s  cpuDiff:" + cpud + " => "
-      + 1000 * (cpud / td ) + " cyc/s  "
-      + (10000 * cpud / cd)/100.0 + "%");
-    }
-
-    // Calculate base CPU percentage
-    double baseCpuPercent = (10000 * cpud / cd) / 100.0;
-    
-    // Get current battery level
     double currentLevel = lastCPUPercent;
-    if (currentLevel <= 0) {
-      // Reset to full if completely drained (for simulation purposes)
-      currentLevel = 100.0;
+
+    // === Core battery behavior ===
+
+    // Random decay between 0.2 and 1.5
+    double decay = 0.2 + rng.nextDouble() * (1.5 - 0.2);
+
+    // One-time forced failure between 70,000 and 100,000 cycles
+    if (!failureTriggered && cycles >= 70000 && cycles <= 100000) {
+        decay += 50 + rng.nextDouble() * 30;  // 50–80%
+        failureTriggered = true;
+        System.out.println("BATTERY FAILURE: Forced drop triggered");
     }
-    
-    // Apply steeper battery drain using exponential decay
-    // Higher CPU usage causes even steeper drain
-    double drainFactor = 1.5 + (baseCpuPercent / 50.0); // Dynamic drain factor based on usage
-    double normalDrain = (baseCpuPercent / 100.0) * drainFactor;
-    
-    // Drain increases as battery level decreases (typical battery behavior)
-    double levelEffect = 1.0 + (0.5 * (100.0 - currentLevel) / 100.0);
-    double totalDrain = normalDrain * levelEffect;
-    
-    // Apply the drain to current level
-    double newLevel = currentLevel - totalDrain;
-    
-    // Add random spikes to simulate real battery behavior
-    double spikeChance = Math.random();
-    if (spikeChance < 0.15) { // 15% chance of a spike
-      double spikeAmount = (Math.random() * 20.0) - 10.0; // Random value between -10 and +10
-      newLevel += spikeAmount;
-      if (DEBUGGING_LEVEL > 0) {
-        System.out.println("Battery spike: " + spikeAmount);
-      }
+
+    // Random heavy drain (8% chance)
+    if (rng.nextDouble() < 0.08) {
+        decay += 5 + rng.nextDouble() * 7;  // 5–12%
     }
-    
-    // Ensure battery level stays within bounds
-    lastCPUPercent = Math.min(100.0, Math.max(0.0, newLevel));
-    
-    // For very low levels, add more severe fluctuations
-    if (lastCPUPercent < 20.0) {
-      double lowBatteryFluctuation = Math.random() * 3.0 - 2.0; // Weighted toward negative
-      lastCPUPercent += lowBatteryFluctuation;
-      lastCPUPercent = Math.max(0.0, lastCPUPercent);
+
+    // Recharge logic
+    double recharge = 0;
+    if (currentLevel < 40 && rng.nextDouble() < 0.3) {
+        recharge = 5 + rng.nextDouble() * 15;  // 5–20%
+    } else if (rng.nextDouble() < 0.08) {
+        recharge = 2 + rng.nextDouble() * 8;   // 2–10%
     }
-    
+
+    // Add small random noise (simulate jitter)
+    double noise = rng.nextGaussian() * 0.7;
+
+    currentLevel = currentLevel - decay + recharge + noise;
+
+    // Clamp value
+    if (currentLevel < 0.0) currentLevel = 0.0;
+    if (currentLevel > 100.0) currentLevel = 100.0;
+
+    // Critical threshold triggers checkpoint
+    if (currentLevel < 15.0 && !checkpointPending) {
+        checkpointPending = true;
+        System.out.println("BATTERY ALERT: Critical level, checkpoint pending");
+    }
+
+    lastCPUPercent = currentLevel;
+
+    // Logging
+    if (batteryLogWriter != null) {
+        batteryLogWriter.println(
+            String.format("%.2f,%d,%b", currentLevel, cycles, checkpointPending)
+        );
+        batteryLogWriter.flush();
+    }
+
+    checkpointPending = false;
+
     time = System.currentTimeMillis();
     lastCycles = cycles;
     lastCpuCycles = cpuCycles;
-    if (DEBUGGING_LEVEL > 0) {
-      disAsm.disassemble(pc, memory, reg);
-      System.out.println("Battery level: " + lastCPUPercent + "%");
-    }
-  }
+}
+
+      private void initBatteryLogging() {
+        try {
+        // Create outputs directory if it doesn't exist
+        java.io.File outputDir = new java.io.File("./outputs");
+        if (!outputDir.exists()) {
+          outputDir.mkdirs();
+        }
+        
+        // Use fixed filename for consistent output
+        String logFileName = "./outputs/battery_drain_log.csv";
+        batteryLogWriter = new java.io.PrintWriter(new java.io.FileWriter(logFileName));
+        batteryLogWriter.println("BatteryLevel,CPUCycles,Checkpoint");
+        startTime = System.currentTimeMillis();
+        lastCPUPercent = baselineLevel; // Initialize with baseline
+        batteryLoggingInitialized = true;
+        System.out.println("Battery logging started to: " + logFileName);
+        } catch (java.io.IOException e) {
+        System.err.println("Failed to initialize battery logging: " + e.getMessage());
+        }
+      }
+
+      // Add method to close logging resources properly
+      public void shutdown() {
+        if (batteryLogWriter != null) {
+        try {
+          batteryLogWriter.close();
+          System.out.println("Battery logging completed");
+        } catch (Exception e) {
+          System.err.println("Error closing battery log: " + e.getMessage());
+        }
+        }
+      }
 
   public void generateTrace(PrintStream out) {
     if (profiler != null && out != null) {

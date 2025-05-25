@@ -1,0 +1,7 @@
+Battery Drain Visualization
+==========================
+Current Battery Level: 96.50%
+
+[================================================  ] 96.50%
+
+Elapsed time: 5ms

@@ -18,7 +18,7 @@ SOURCES := msp430setup.c
 
 OBJECTS := $(SOURCES:.c=.o)
 
-all:	djikstra.ihex
+all:	cuckoo.ihex
 # all:	cputest.firmware timertest.firmware
 # all : cputest.sky
 
