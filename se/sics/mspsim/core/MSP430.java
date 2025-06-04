@@ -66,10 +66,19 @@ public class MSP430 extends MSP430Core {
   private long time;
   private long nextSleep = 0;
   private long nextOut = 0;
-
+  
   private double lastCPUPercent = 0d;
 
   private DisAsm disAsm;
+
+  private long executionStartTime = 0;
+  private long totalExecutionTime = 0;
+  private boolean timingActive = false;
+  private int numberOfCheckpoints = 0;
+  public String outFile= "";
+  private String strategy = "";
+
+
 
   private SimEventListener[] simEventListeners;
 
@@ -99,10 +108,12 @@ public class MSP430 extends MSP430Core {
     }
     setRunning(true);
     try {
+        startTiming();
         // ??? - power-up  should be executed?!
         time = System.currentTimeMillis();
         run();
     } finally {
+        pauseTiming();
         setRunning(false);
     }
   }
@@ -142,70 +153,63 @@ public class MSP430 extends MSP430Core {
                 }
             }
 
-            // //  uncomment below lines to use proposed checkpointing
-            // // Check CPU metrics periodically
-            // if (cycles > nextOut) {
-            //     // This call updates lastCPUPercent
-            //     printCPUSpeed(reg[PC]);
-            //     nextOut = cycles + 1000;
-            //     // double cpuPercent = getCPUPercent();
-            //     // System.out.println("Saving state to flash: " + cpuPercent + "%");
-            //     // saveStateToFlash();
-            //     // Now check the CPU percentage for battery simulation
-            //     double cpuPercent = getCPUPercent();
-            //     if (cpuPercent > 50) {
-            //         batchCycles +=1000; // Reset batch cycles if battery is sufficient
-            //         System.out.println("Battery sufficient: " + cpuPercent + "%");
-            //     } else if (cpuPercent < 50 && cpuPercent > 20) {
-            //         if (batchCycles > 25000) {
-            //             System.out.println("Saving state to flash: " + cpuPercent + "%");
-            //             saveStateToFlash();
-            //             batchCycles = 0;
-            //         }
-            //         batchCycles += 1000; // Accumulate cycles for potential save
-            //     } else if (cpuPercent < 20 && cpuPercent > 0) {
-            //         System.out.println("Saving state to flash: " + cpuPercent + "%");
-            //         saveStateToFlash();
-            //     }
-            //   }
+            if (strategy.equals("proposed")){
+              // // Check CPU metrics periodically
+              if (cycles > nextOut) {
+                  // This call updates lastCPUPercent
+                  printCPUSpeed(reg[PC]);
+                  nextOut = cycles + 1000;
+                  // double cpuPercent = getCPUPercent();
+                  // System.out.println("Saving state to flash: " + cpuPercent + "%");
+                  // saveStateToFlash();
+                  // Now check the CPU percentage for battery simulation
+                  double cpuPercent = getCPUPercent();
+                  if (cpuPercent > 50) {
+                      batchCycles +=1000; // Reset batch cycles if battery is sufficient
+                      System.out.println("Battery sufficient: " + cpuPercent + "%");
+                  } else if (cpuPercent < 50 && cpuPercent > 20) {
+                      if (batchCycles > 25000) {
+                          System.out.println("Saving state to flash: " + cpuPercent + "%");
+                          saveStateToFlash();
+                          batchCycles = 0;
+                      }
+                      batchCycles += 1000; // Accumulate cycles for potential save
+                  } else if (cpuPercent < 20 && cpuPercent > 0) {
+                      System.out.println("Saving state to flash: " + cpuPercent + "%");
+                      saveStateToFlash();
+                  }
+                }
 
-
-            // uncomment below lines to use JIT checkpointing
-            // if (cycles > nextOut) {
-            //     // This call updates lastCPUPercent
-            //     printCPUSpeed(reg[PC]);
-            //     nextOut = cycles + 100; // change this value for sensing battery at different time.
-            //     double cpuPercent = getCPUPercent();
-            //     if (cpuPercent <20) {
-            //       System.out.println("Battery critical: " + cpuPercent + "%, saving state to flash");
-            //       saveStateToFlash();
-            //     }
-            // }
-
-            // // Uncomment to use periodic
-            // if (cycles > nextOut) {
-            //     // This call updates lastCPUPercent
-            //     printCPUSpeed(reg[PC]);
-            //     nextOut = cycles + 1000; // change this value for sensing battery at different time.
-            //     double cpuPercent = getCPUPercent();
-            //     saveStateToFlash();
-            // }
-
-            // uncoment this to use adaptive
-
-            // Handle sleep timing
-            if (cycles >  nextOut) {
+            } else if (strategy.equals("jit")) {
+              if (cycles > nextOut) {
+                // This call updates lastCPUPercent
+                printCPUSpeed(reg[PC]);
+                nextOut = cycles + 100; // change this value for sensing battery at different time.
+                double cpuPercent = getCPUPercent();
+                if (cpuPercent <20) {
+                  System.out.println("Battery critical: " + cpuPercent + "%, saving state to flash");
+                  saveStateToFlash();
+                }
+            }
+            }else if (strategy.equals("periodic")){
+              if (cycles > nextOut) {
+                // This call updates lastCPUPercent
+                printCPUSpeed(reg[PC]);
+                nextOut = cycles + 1000; // change this value for sensing battery at different time.
+                double cpuPercent = getCPUPercent();
+                saveStateToFlash();
+            }
+            } else if (strategy.equals("adaptive")){
+              if (cycles >  nextOut) {
               if (cycles > nextSampleCycle) {
                   printCPUSpeed(reg[PC]);
                   nextOut = cycles + 1000; 
                   prevBatteryPercent = batteryPercent;
                   batteryPercent = getCPUPercent();
                   double deltaBattery = batteryPercent - prevBatteryPercent;
-
                   // Update checkpointing mode
                   if (batteryPercent > highThreshold) {
                       usePeriodic = true;
-
                       // Checkpoint skipping
                       if (deltaBattery >= 0) {
                           System.out.println("Battery stable/increasing (" + batteryPercent + "%), skipping checkpoint");
@@ -214,18 +218,15 @@ public class MSP430 extends MSP430Core {
                           System.out.println("Battery dropping slowly, doing periodic checkpoint");
                           saveStateToFlash(); // Not skipping
                       }
-
                   } else if (batteryPercent > mediumThreshold) {
                       usePeriodic = true;
                       System.out.println("Medium battery (" + batteryPercent + "%), saving checkpoint");
                       saveStateToFlash();
-
                   } else if (batteryPercent <= lowThreshold) {
                       usePeriodic = false;
                       System.out.println("Low battery (" + batteryPercent + "%), switching to JIT");
                       saveStateToFlash();
                   }
-
                   // Adaptive sampling interval (simple version)
                   if (batteryPercent > 70) {
                       samplingInterval = 2000; // sample less frequently
@@ -234,11 +235,19 @@ public class MSP430 extends MSP430Core {
                   } else {
                       samplingInterval = 500;  // sample more frequently
                   }
-
                   nextSampleCycle = cycles + samplingInterval;
               }
-
             }
+
+            } else if (strategy.equals("none")) {
+              // No strategy, just run normally
+              if (cycles > nextOut) {
+                printCPUSpeed(reg[PC]);
+                nextOut = cycles + 1000; // change this value for sensing battery at different time.
+              }
+            }
+            
+
         }
         isStopping = isBreaking = false;
     } catch (Exception e) {
@@ -246,12 +255,37 @@ public class MSP430 extends MSP430Core {
     }
 }
 
+private void startTiming() {
+    if (!timingActive) {
+        executionStartTime = System.nanoTime();
+        timingActive = true;
+    }
+  }
+
+  private void pauseTiming() {
+    if (timingActive) {
+        totalExecutionTime += System.nanoTime() - executionStartTime;
+        timingActive = false;
+    }
+  }
+
+  public long getExecutionTime() {
+    long currentTotal = totalExecutionTime;
+    if (timingActive) {
+        // Add current active session time if timing is ongoing
+        currentTotal += (System.nanoTime() - executionStartTime);
+    }
+    return currentTotal / 1_000_000; // Convert nanoseconds to milliseconds
+  }
+
   private void saveStateToFlash() {
     M25P80 flash = registry.getComponent(M25P80.class, "xmem");
     if (flash == null) {
         System.err.println("Error: Flash component not available");
         return;
     }
+
+    
 
     // Create saves directory if it doesn't exist
     File saveDir = new File("saves");
@@ -352,6 +386,7 @@ public class MSP430 extends MSP430Core {
         
         // Log completion status
         System.out.println("State save operation completed");
+        numberOfCheckpoints++;
     }
 }
 
@@ -492,6 +527,7 @@ public class MSP430 extends MSP430Core {
                 lastMicrosDelta -= jumpMicros;
             }
             if (isBreaking) {
+                pauseTiming();
                 isBreaking = false;
                 throw new BreakpointException();
             }
@@ -517,6 +553,7 @@ public class MSP430 extends MSP430Core {
   }
 
   public void stop() {
+      pauseTiming();
       isStopping = true;
   }
 
@@ -653,12 +690,13 @@ private void printCPUSpeed(int pc) {
         }
         
         // Use fixed filename for consistent output
-        String logFileName = "./outputs/battery_drain_log.csv";
+        String logFileName = "./outputs/battery_log_" + strategy + "_" + System.currentTimeMillis() + ".csv";
         batteryLogWriter = new java.io.PrintWriter(new java.io.FileWriter(logFileName));
         batteryLogWriter.println("BatteryLevel,CPUCycles,Checkpoint");
         startTime = System.currentTimeMillis();
         lastCPUPercent = baselineLevel; // Initialize with baseline
         batteryLoggingInitialized = true;
+        outFile = logFileName; // Store the output file name
         System.out.println("Battery logging started to: " + logFileName);
         } catch (java.io.IOException e) {
         System.err.println("Failed to initialize battery logging: " + e.getMessage());
@@ -667,15 +705,24 @@ private void printCPUSpeed(int pc) {
 
       // Add method to close logging resources properly
       public void shutdown() {
-        if (batteryLogWriter != null) {
-        try {
-          batteryLogWriter.close();
-          System.out.println("Battery logging completed");
-        } catch (Exception e) {
-          System.err.println("Error closing battery log: " + e.getMessage());
-        }
-        }
+    pauseTiming(); // Ensure timing is stopped
+    
+    if (batteryLogWriter != null) {
+      try {
+        // Add execution time to log before closing
+        batteryLogWriter.println("Total Execution Time (ms): " + getExecutionTime());
+        batteryLogWriter.close();
+        System.out.println("Battery logging completed" + 
+            (outFile.isEmpty() ? "" : " saved to " + outFile));
+        System.out.println("Total number of checkpoints "+ numberOfCheckpoints);
+        System.out.println("Total simulation execution time: " + getExecutionTime() + " ms");
+      } catch (Exception e) {
+        System.err.println("Error closing battery log: " + e.getMessage());
       }
+    } else {
+      System.out.println("Total simulation execution time: " + getExecutionTime() + " ms");
+    }
+  }
 
   public void generateTrace(PrintStream out) {
     if (profiler != null && out != null) {
@@ -720,6 +767,11 @@ private void printCPUSpeed(int pc) {
 
   public boolean isRunning() {
     return running;
+  }
+
+  public void setStrategy(String strategy) {
+    this.strategy = strategy;
+    System.out.println("Strategy set to: " + strategy);
   }
 
   public double getExecutionRate() {

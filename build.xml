@@ -69,6 +69,30 @@
     </java>
   </target>
 
+  <target name="runsort" depends="jar" description="run MSPSim with platform Sky">
+    <property name="FIRMWAREFILE" value="benchmarks/sort.ihex"/>
+    <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
+      <arg value="${FIRMWAREFILE}"/>
+      <arg line="${ARGS}"/>
+    </java>
+  </target>
+
+  <target name="runrsa" depends="jar" description="run MSPSim with platform Sky">
+    <property name="FIRMWAREFILE" value="benchmarks/rsa.ihex"/>
+    <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
+      <arg value="${FIRMWAREFILE}"/>
+      <arg line="${ARGS}"/>
+    </java>
+  </target>
+
+  <target name="runsha" depends="jar" description="run MSPSim with platform Sky">
+    <property name="FIRMWAREFILE" value="benchmarks/sha.ihex"/>
+    <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
+      <arg value="${FIRMWAREFILE}"/>
+      <arg line="${ARGS}"/>
+    </java>
+  </target>
+
   <target name="runskyprof" depends="jar" description="run MSPSim with platform Sky for profiling">
     <property name="FIRMWAREFILE" value="firmware/sky/blink.sky"/>
     <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">

@@ -5,15 +5,12 @@ import java.io.DataOutputStream;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.PrintStream;
 import se.sics.mspsim.chip.M25P80;
 import se.sics.mspsim.core.MSP430;
 import se.sics.mspsim.util.ComponentRegistry;
-import se.sics.mspsim.util.MultiDataSource;
 import se.sics.mspsim.util.DataSource;
-import se.sics.mspsim.util.OperatingModeStatistics;
-import se.sics.mspsim.core.TimeEvent;
 import se.sics.mspsim.util.DivUtil;
+import se.sics.mspsim.util.OperatingModeStatistics;
 
 
 
@@ -55,6 +52,21 @@ public class DivCommand implements CommandBundle {
                 }
             }
         });
+
+        handler.registerCommand("strategy", new BasicCommand("select strategy of checkpointing", "<strategy>") {
+            @Override
+            public int executeCommand(CommandContext context) {
+                if (context.getArgumentCount() != 1) {
+                    context.err.println("Usage: strategy <strategy>");
+                    return 1;
+                }
+                String strategy = context.getArgument(0);
+                cpu.setStrategy(strategy);
+                context.out.println("Checkpointing strategy set to: " + strategy);
+                return 0;
+            }
+        });
+    
 
         handler.registerCommand("savefl", new BasicCommand("save CPU state to flash", "") {
             @Override

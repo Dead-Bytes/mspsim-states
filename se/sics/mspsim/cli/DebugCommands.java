@@ -315,6 +315,15 @@ public class DebugCommands implements CommandBundle {
             return 0;
           }
         });
+        ch.registerCommand("shut", new BasicCommand("shutting down the CPU", "") {
+          public int executeCommand(CommandContext context) {
+            node.stop();
+            context.out.println("CPU stopped at: $" + cpu.getAddressAsString(cpu.getPC()));
+            cpu.shutdown();
+            context.out.println("CPU shutdown complete.");
+            return 0;
+          }
+        });
         ch.registerCommand("throw", new BasicCommand("throw an Emulation Exception", "[message]") {
             public int executeCommand(CommandContext context) {
                 final String msg = context.getArgumentCount() > 0 ? context.getArgument(0) : "by request";
