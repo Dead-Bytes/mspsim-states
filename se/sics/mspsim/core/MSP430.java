@@ -125,7 +125,7 @@ public class MSP430 extends MSP430Core {
   boolean usePeriodic = true;
   long nextSampleCycle = 0;
   long samplingInterval = 1000; // will adapt based on battery
-  double highThreshold = 60.0;   // Above this: periodic, maybe skip
+  double highThreshold = 50.0;   // Above this: periodic, maybe skip
   double mediumThreshold = 40.0; // Between: periodic, no skip
   double lowThreshold = 20.0;    // Below: JIT
   private void run() throws EmulationException {
@@ -164,17 +164,17 @@ public class MSP430 extends MSP430Core {
                   // saveStateToFlash();
                   // Now check the CPU percentage for battery simulation
                   double cpuPercent = getCPUPercent();
-                  if (cpuPercent > 50) {
+                  if (cpuPercent > highThreshold) {
                       batchCycles +=1000; // Reset batch cycles if battery is sufficient
                       System.out.println("Battery sufficient: " + cpuPercent + "%");
-                  } else if (cpuPercent < 50 && cpuPercent > 20) {
+                  } else if (cpuPercent < highThreshold && cpuPercent > lowThreshold) {
                       if (batchCycles > 25000) {
                           System.out.println("Saving state to flash: " + cpuPercent + "%");
                           saveStateToFlash();
                           batchCycles = 0;
                       }
                       batchCycles += 1000; // Accumulate cycles for potential save
-                  } else if (cpuPercent < 20 && cpuPercent > 0) {
+                  } else if (cpuPercent < lowThreshold && cpuPercent > 0) {
                       System.out.println("Saving state to flash: " + cpuPercent + "%");
                       saveStateToFlash();
                   }
@@ -772,6 +772,16 @@ private void printCPUSpeed(int pc) {
   public void setStrategy(String strategy) {
     this.strategy = strategy;
     System.out.println("Strategy set to: " + strategy);
+  }
+
+  public void setHighThreshold(double highThreshold) {
+    this.highThreshold = highThreshold;
+  }
+  public void setMediumThreshold(double mediumThreshold) {
+    this.mediumThreshold = mediumThreshold;
+  }
+  public void setLowThreshold(double lowThreshold) {
+    this.lowThreshold = lowThreshold;
   }
 
   public double getExecutionRate() {

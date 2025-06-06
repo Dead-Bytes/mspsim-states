@@ -66,6 +66,34 @@ public class DivCommand implements CommandBundle {
                 return 0;
             }
         });
+
+        handler.registerCommand("highThreshold", new BasicCommand("select high threshhold used n proposed strategy of checkpointing", "<threshhold>") {
+            @Override
+            public int executeCommand(CommandContext context) {
+                if (context.getArgumentCount() != 1) {
+                    context.err.println("Usage: highThreshold <threshold>");
+                    return 1;
+                }
+                double threshold = Double.parseDouble(context.getArgument(0));
+                cpu.setHighThreshold(threshold);
+                context.out.println("Checkpointing high threshold set to: " + threshold);
+                return 0;
+            }
+        });
+
+        handler.registerCommand("lowThreshold", new BasicCommand("select low threshold of checkpointing", "<threshhold>") {
+            @Override
+            public int executeCommand(CommandContext context) {
+                if (context.getArgumentCount() != 1) {
+                    context.err.println("Usage: lowThreshold <threshold>");
+                    return 1;
+                }
+                double threshold = Double.parseDouble(context.getArgument(0));
+                cpu.setLowThreshold(threshold);
+                context.out.println("Checkpointing low threshold set to: " + threshold);
+                return 0;
+            }
+        });
     
 
         handler.registerCommand("savefl", new BasicCommand("save CPU state to flash", "") {
