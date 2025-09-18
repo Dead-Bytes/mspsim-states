@@ -1,0 +1,141 @@
+{
+  "total_energy_nj": 50000.0,
+  "instruction_energy_map": {
+    "MOV.W": 1.853,
+    "MOV.B": 2.779,
+    "BIS.W": 1.534,
+    "TST.W": 1.733,
+    "JEQ": 3.505,
+    "DECD.W": 1.93,
+    "JNE": 3.293,
+    "ADD.W": 1.650,
+    "SUB.W": 1.620,
+    "CMP.W": 1.580,
+    "PUSH.W": 2.100,
+    "POP.W": 2.050,
+    "CALL": 3.800,
+    "RET": 3.200,
+    "NOP": 0.850,
+    "MOV": 1.853,
+    "ADD": 1.650,
+    "SUB": 1.620,
+    "CMP": 1.580,
+    "JUMP": 3.000,
+    "SINGLE_OP": 2.000,
+    "BIT": 1.400,
+    "BIC": 1.350,
+    "BIS": 1.534,
+    "XOR": 1.450,
+    "AND": 1.380,
+    "DADD": 1.780,
+    "ADDC": 1.680,
+    "SUBC": 1.650,
+    "UNKNOWN": 1.500
+  },
+  "blocks": [
+    {
+      "id": 1,
+      "start_address": "0x4000",
+      "end_address": "0x4016",
+      "instructions": [
+        {
+          "addr": "0x4000",
+          "mnemonic": "MOV.B",
+          "operands": "&WDTCTL,R5",
+          "energy_est": 2.779
+        },
+        {
+          "addr": "0x4004",
+          "mnemonic": "BIS.W",
+          "operands": "#0x5a08,R5",
+          "energy_est": 1.534
+        },
+        {
+          "addr": "0x4008",
+          "mnemonic": "MOV.W",
+          "operands": "R5,&DAT_1104",
+          "energy_est": 2.779
+        },
+        {
+          "addr": "0x400c",
+          "mnemonic": "MOV.W",
+          "operands": "#0x3900,SP",
+          "energy_est": 1.853
+        },
+        {
+          "addr": "0x4010",
+          "mnemonic": "MOV.W",
+          "operands": "#0x0,R15",
+          "energy_est": 1.853
+        },
+        {
+          "addr": "0x4014",
+          "mnemonic": "TST.W",
+          "operands": "R15",
+          "energy_est": 1.733
+        },
+        {
+          "addr": "0x4016",
+          "mnemonic": "JEQ",
+          "operands": "LAB_4028",
+          "energy_est": 3.505
+        }
+      ],
+      "block_energy_est": 70.0,
+      "successors": [
+        "0x4028"
+      ],
+      "metadata": {
+        "num_instructions": 7,
+        "is_terminal": false,
+        "contains_branch": true
+      },
+      "predicted_total_energy": 16.036,
+      "model_used": "RF",
+      "prediction_timestamp": "2025-09-18T09:40:35.799536"
+    },
+    {
+      "id": 2,
+      "start_address": "0x4018",
+      "end_address": "0x4026",
+      "instructions": [
+        {
+          "addr": "0x4018",
+          "mnemonic": "MOV.W",
+          "operands": "&DAT_1104,&WDTCTL",
+          "energy_est": 2.611
+        },
+        {
+          "addr": "0x401e",
+          "mnemonic": "DECD.W",
+          "operands": "R15",
+          "energy_est": 1.93
+        },
+        {
+          "addr": "0x4020",
+          "mnemonic": "MOV.W",
+          "operands": "0x5464(R15)=>DAT_5462,0x1100(R15)",
+          "energy_est": 2.829
+        },
+        {
+          "addr": "0x4026",
+          "mnemonic": "JNE",
+          "operands": "LAB_4018",
+          "energy_est": 3.293
+        }
+      ],
+      "block_energy_est": 40.0,
+      "successors": [
+        "0x4018"
+      ],
+      "metadata": {
+        "num_instructions": 4,
+        "is_terminal": false,
+        "contains_branch": true
+      },
+      "predicted_total_energy": 10.662,
+      "model_used": "RF",
+      "prediction_timestamp": "2025-09-18T09:40:35.799568"
+    }
+  ]
+}

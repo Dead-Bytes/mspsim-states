@@ -46,6 +46,7 @@ import se.sics.mspsim.profiler.SimpleProfiler;
 import se.sics.mspsim.util.ArrayUtils;
 import se.sics.mspsim.util.ComponentRegistry;
 import se.sics.mspsim.util.MapTable;
+import se.sics.mspsim.util.EnergyConfig;
 
 
 public class MSP430 extends MSP430Core {
@@ -78,7 +79,8 @@ public class MSP430 extends MSP430Core {
   public String outFile= "";
   private String strategy = "";
 
-
+  // Energy monitoring
+  private InstructionEnergyMonitor energyMonitor;
 
   private SimEventListener[] simEventListeners;
 
@@ -92,9 +94,31 @@ public class MSP430 extends MSP430Core {
   public MSP430(int type, ComponentRegistry registry, MSP430Config config) {
     super(type, registry, config);
     disAsm = new DisAsm();
+
+    // Initialize energy monitoring
+    initializeEnergyMonitoring();
+  }
+
+  /**
+   * Initialize energy monitoring system
+   */
+  private void initializeEnergyMonitoring() {
+    try {
+      EnergyConfig config = EnergyConfig.loadFromEnv();
+      energyMonitor = new InstructionEnergyMonitor(config);
+      setEnergyListener(energyMonitor);
+      System.out.println("Energy monitoring initialized with " + config.getTotalEnergyNanoJoules() + " nJ total energy");
+    } catch (Exception e) {
+      System.err.println("Failed to initialize energy monitoring: " + e.getMessage());
+      energyMonitor = null;
+    }
   }
 
   public double getCPUPercent() {
+    // Use energy monitor if available, otherwise fall back to old system
+    if (energyMonitor != null) {
+      return energyMonitor.getBatteryPercentage();
+    }
     return lastCPUPercent;
   }
 
@@ -622,41 +646,55 @@ private void printCPUSpeed(int pc) {
 
     if (td == 0 || cd == 0) return;
 
-    double currentLevel = lastCPUPercent;
+    double currentLevel;
 
-    // === Core battery behavior ===
+    // Use real energy monitoring if available
+    if (energyMonitor != null) {
+        currentLevel = energyMonitor.getBatteryPercentage();
 
-    // Random decay between 0.2 and 1.5
-    double decay = 0.2 + rng.nextDouble() * (1.5 - 0.2);
+        // Check if energy is depleted
+        if (energyMonitor.isBatteryDepleted()) {
+            System.out.println("ENERGY DEPLETED: System shutdown due to battery exhaustion");
+            stop();
+            return;
+        }
+    } else {
+        // Fallback to old random battery simulation
+        currentLevel = lastCPUPercent;
 
-    // One-time forced failure between 70,000 and 100,000 cycles
-    if (!failureTriggered && cycles >= 70000 && cycles <= 100000) {
-        decay += 50 + rng.nextDouble() * 30;  // 50–80%
-        failureTriggered = true;
-        System.out.println("BATTERY FAILURE: Forced drop triggered");
+        // === Core battery behavior ===
+        // Random decay between 0.2 and 1.5
+        double decay = 0.2 + rng.nextDouble() * (1.5 - 0.2);
+
+        // One-time forced failure between 70,000 and 100,000 cycles
+        if (!failureTriggered && cycles >= 70000 && cycles <= 100000) {
+            decay += 50 + rng.nextDouble() * 30;  // 50–80%
+            failureTriggered = true;
+            System.out.println("BATTERY FAILURE: Forced drop triggered");
+        }
+
+        // Random heavy drain (8% chance)
+        if (rng.nextDouble() < 0.08) {
+            decay += 5 + rng.nextDouble() * 7;  // 5–12%
+        }
+
+        // Recharge logic
+        double recharge = 0;
+        if (currentLevel < 40 && rng.nextDouble() < 0.3) {
+            recharge = 5 + rng.nextDouble() * 15;  // 5–20%
+        } else if (rng.nextDouble() < 0.08) {
+            recharge = 2 + rng.nextDouble() * 8;   // 2–10%
+        }
+
+        // Add small random noise (simulate jitter)
+        double noise = rng.nextGaussian() * 0.7;
+
+        currentLevel = currentLevel - decay + recharge + noise;
+
+        // Clamp value
+        if (currentLevel < 0.0) currentLevel = 0.0;
+        if (currentLevel > 100.0) currentLevel = 100.0;
     }
-
-    // Random heavy drain (8% chance)
-    if (rng.nextDouble() < 0.08) {
-        decay += 5 + rng.nextDouble() * 7;  // 5–12%
-    }
-
-    // Recharge logic
-    double recharge = 0;
-    if (currentLevel < 40 && rng.nextDouble() < 0.3) {
-        recharge = 5 + rng.nextDouble() * 15;  // 5–20%
-    } else if (rng.nextDouble() < 0.08) {
-        recharge = 2 + rng.nextDouble() * 8;   // 2–10%
-    }
-
-    // Add small random noise (simulate jitter)
-    double noise = rng.nextGaussian() * 0.7;
-
-    currentLevel = currentLevel - decay + recharge + noise;
-
-    // Clamp value
-    if (currentLevel < 0.0) currentLevel = 0.0;
-    if (currentLevel > 100.0) currentLevel = 100.0;
 
     // Critical threshold triggers checkpoint
     if (currentLevel < 15.0 && !checkpointPending) {
@@ -706,7 +744,12 @@ private void printCPUSpeed(int pc) {
       // Add method to close logging resources properly
       public void shutdown() {
     pauseTiming(); // Ensure timing is stopped
-    
+
+    // Shutdown energy monitoring
+    if (energyMonitor != null) {
+        energyMonitor.shutdown();
+    }
+
     if (batteryLogWriter != null) {
       try {
         // Add execution time to log before closing

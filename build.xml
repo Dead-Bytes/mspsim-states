@@ -12,6 +12,13 @@
   <property name="ant.build.javac.target" value="11"/>
   <property name="ARGS" value=""/>
 
+  <!-- Energy monitoring configuration properties -->
+  <property name="TOTAL_ENERGY_NJ" value="20000.0"/>
+  <property name="ENERGY_MODEL_FILE" value="blocks_with_real_energy.json"/>
+  <property name="ENERGY_LOGGING" value="true"/>
+  <property name="ENERGY_CHECKPOINT_THRESHOLD" value="20.0"/>
+  <property name="STRATEGY" value="adaptive"/>
+
   <path id="classpath">
     <fileset dir="${lib}" includes="**/*.jar"/>
   </path>
@@ -53,42 +60,86 @@
     </java>
   </target>
 
-  <target name="rundjikstra" depends="jar" description="run MSPSim with platform Sky">
+  <target name="rundjikstra" depends="jar" description="run MSPSim with platform Sky and energy monitoring">
     <property name="FIRMWAREFILE" value="benchmarks/djikstra.ihex"/>
     <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
+      <env key="TOTAL_ENERGY_NJ" value="${TOTAL_ENERGY_NJ}"/>
+      <env key="ENERGY_MODEL_FILE" value="${ENERGY_MODEL_FILE}"/>
+      <env key="ENERGY_LOGGING" value="${ENERGY_LOGGING}"/>
+      <env key="ENERGY_CHECKPOINT_THRESHOLD" value="${ENERGY_CHECKPOINT_THRESHOLD}"/>
+      <env key="STRATEGY" value="${STRATEGY}"/>
       <arg value="${FIRMWAREFILE}"/>
+      <arg value="nogui"/>
       <arg line="${ARGS}"/>
     </java>
   </target>
 
-  <target name="runcuckoo" depends="jar" description="run MSPSim with platform Sky">
+  <target name="runcuckoo" depends="jar" description="run MSPSim with platform Sky and energy monitoring">
     <property name="FIRMWAREFILE" value="benchmarks/cuckoo.ihex"/>
     <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
+      <env key="TOTAL_ENERGY_NJ" value="${TOTAL_ENERGY_NJ}"/>
+      <env key="ENERGY_MODEL_FILE" value="${ENERGY_MODEL_FILE}"/>
+      <env key="ENERGY_LOGGING" value="${ENERGY_LOGGING}"/>
+      <env key="ENERGY_CHECKPOINT_THRESHOLD" value="${ENERGY_CHECKPOINT_THRESHOLD}"/>
+      <env key="STRATEGY" value="${STRATEGY}"/>
       <arg value="${FIRMWAREFILE}"/>
+      <arg value="nogui"/>
       <arg line="${ARGS}"/>
     </java>
   </target>
 
-  <target name="runsort" depends="jar" description="run MSPSim with platform Sky">
+  <target name="runsort" depends="jar" description="run MSPSim with platform Sky and energy monitoring (GUI)">
     <property name="FIRMWAREFILE" value="benchmarks/sort.ihex"/>
     <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
+      <env key="TOTAL_ENERGY_NJ" value="${TOTAL_ENERGY_NJ}"/>
+      <env key="ENERGY_MODEL_FILE" value="${ENERGY_MODEL_FILE}"/>
+      <env key="ENERGY_LOGGING" value="${ENERGY_LOGGING}"/>
+      <env key="ENERGY_CHECKPOINT_THRESHOLD" value="${ENERGY_CHECKPOINT_THRESHOLD}"/>
+      <env key="STRATEGY" value="${STRATEGY}"/>
+      <jvmarg value="-Djava.awt.headless=false"/>
       <arg value="${FIRMWAREFILE}"/>
       <arg line="${ARGS}"/>
     </java>
   </target>
 
-  <target name="runrsa" depends="jar" description="run MSPSim with platform Sky">
+  <target name="runsort-headless" depends="jar" description="run MSPSim with platform Sky and energy monitoring (no GUI)">
+    <property name="FIRMWAREFILE" value="benchmarks/sort.ihex"/>
+    <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
+      <env key="TOTAL_ENERGY_NJ" value="${TOTAL_ENERGY_NJ}"/>
+      <env key="ENERGY_MODEL_FILE" value="${ENERGY_MODEL_FILE}"/>
+      <env key="ENERGY_LOGGING" value="${ENERGY_LOGGING}"/>
+      <env key="ENERGY_CHECKPOINT_THRESHOLD" value="${ENERGY_CHECKPOINT_THRESHOLD}"/>
+      <env key="STRATEGY" value="${STRATEGY}"/>
+      <arg value="${FIRMWAREFILE}"/>
+      <arg value="nogui"/>
+      <arg line="${ARGS}"/>
+    </java>
+  </target>
+
+  <target name="runrsa" depends="jar" description="run MSPSim with platform Sky and energy monitoring">
     <property name="FIRMWAREFILE" value="benchmarks/rsa.ihex"/>
     <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
+      <env key="TOTAL_ENERGY_NJ" value="${TOTAL_ENERGY_NJ}"/>
+      <env key="ENERGY_MODEL_FILE" value="${ENERGY_MODEL_FILE}"/>
+      <env key="ENERGY_LOGGING" value="${ENERGY_LOGGING}"/>
+      <env key="ENERGY_CHECKPOINT_THRESHOLD" value="${ENERGY_CHECKPOINT_THRESHOLD}"/>
+      <env key="STRATEGY" value="${STRATEGY}"/>
       <arg value="${FIRMWAREFILE}"/>
+      <arg value="nogui"/>
       <arg line="${ARGS}"/>
     </java>
   </target>
 
-  <target name="runsha" depends="jar" description="run MSPSim with platform Sky">
+  <target name="runsha" depends="jar" description="run MSPSim with platform Sky and energy monitoring">
     <property name="FIRMWAREFILE" value="benchmarks/sha.ihex"/>
     <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
+      <env key="TOTAL_ENERGY_NJ" value="${TOTAL_ENERGY_NJ}"/>
+      <env key="ENERGY_MODEL_FILE" value="${ENERGY_MODEL_FILE}"/>
+      <env key="ENERGY_LOGGING" value="${ENERGY_LOGGING}"/>
+      <env key="ENERGY_CHECKPOINT_THRESHOLD" value="${ENERGY_CHECKPOINT_THRESHOLD}"/>
+      <env key="STRATEGY" value="${STRATEGY}"/>
       <arg value="${FIRMWAREFILE}"/>
+      <arg value="nogui"/>
       <arg line="${ARGS}"/>
     </java>
   </target>
@@ -161,7 +212,13 @@
   <target name="run" depends="jar" description="run MSPSim">
     <property name="FIRMWAREFILE" value="firmware/sky/blink.sky"/>
     <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.Main">
+      <env key="TOTAL_ENERGY_NJ" value="${TOTAL_ENERGY_NJ}"/>
+      <env key="ENERGY_MODEL_FILE" value="${ENERGY_MODEL_FILE}"/>
+      <env key="ENERGY_LOGGING" value="${ENERGY_LOGGING}"/>
+      <env key="ENERGY_CHECKPOINT_THRESHOLD" value="${ENERGY_CHECKPOINT_THRESHOLD}"/>
+      <env key="STRATEGY" value="${STRATEGY}"/>
       <arg value="${FIRMWAREFILE}"/>
+      <arg value="nogui"/>
       <arg line="${ARGS}"/>
     </java>
   </target>
@@ -185,6 +242,59 @@
   </target>
 
   <target name="test" depends="jar, test-cpu, test-timer"/>
+
+  <!-- Generic energy-enabled target for custom firmware and energy profiles -->
+  <target name="run-with-energy" depends="jar" description="run MSPSim with custom firmware and energy profile">
+    <fail unless="FIRMWARE" message="Please specify firmware file: ant run-with-energy -DFIRMWARE=path/to/firmware.ihex"/>
+    <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
+      <env key="TOTAL_ENERGY_NJ" value="${TOTAL_ENERGY_NJ}"/>
+      <env key="ENERGY_MODEL_FILE" value="${ENERGY_MODEL_FILE}"/>
+      <env key="ENERGY_LOGGING" value="${ENERGY_LOGGING}"/>
+      <env key="ENERGY_CHECKPOINT_THRESHOLD" value="${ENERGY_CHECKPOINT_THRESHOLD}"/>
+      <env key="STRATEGY" value="${STRATEGY}"/>
+      <arg value="${FIRMWARE}"/>
+      <arg value="nogui"/>
+      <arg line="${ARGS}"/>
+    </java>
+  </target>
+
+  <!-- Energy profile testing targets -->
+  <target name="test-energy-sort" depends="jar" description="test sort with specific energy profile">
+    <property name="TEST_ENERGY_FILE" value="${ENERGY_MODEL_FILE}"/>
+    <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
+      <env key="TOTAL_ENERGY_NJ" value="10000.0"/>
+      <env key="ENERGY_MODEL_FILE" value="${TEST_ENERGY_FILE}"/>
+      <env key="ENERGY_LOGGING" value="true"/>
+      <env key="ENERGY_CHECKPOINT_THRESHOLD" value="25.0"/>
+      <env key="STRATEGY" value="jit"/>
+      <arg value="benchmarks/sort.ihex"/>
+      <arg value="nogui"/>
+    </java>
+  </target>
+
+  <target name="help-energy" description="show energy configuration options">
+    <echo message="=== MSPSim Energy Configuration ==="/>
+    <echo message=""/>
+    <echo message="Available energy properties:"/>
+    <echo message="  -DTOTAL_ENERGY_NJ=value      : Total energy budget in nanojoules (default: ${TOTAL_ENERGY_NJ})"/>
+    <echo message="  -DENERGY_MODEL_FILE=path     : Path to JSON energy analysis file (default: ${ENERGY_MODEL_FILE})"/>
+    <echo message="  -DENERGY_LOGGING=true/false  : Enable energy logging (default: ${ENERGY_LOGGING})"/>
+    <echo message="  -DENERGY_CHECKPOINT_THRESHOLD=value : Battery % for checkpoints (default: ${ENERGY_CHECKPOINT_THRESHOLD})"/>
+    <echo message="  -DSTRATEGY=name              : Checkpoint strategy (default: ${STRATEGY})"/>
+    <echo message=""/>
+    <echo message="Usage examples:"/>
+    <echo message="  ant runsort"/>
+    <echo message="  ant runsort -DENERGY_MODEL_FILE=my_analysis.json"/>
+    <echo message="  ant runsort -DTOTAL_ENERGY_NJ=50000 -DSTRATEGY=periodic"/>
+    <echo message="  ant run-with-energy -DFIRMWARE=benchmarks/sort.ihex -DENERGY_MODEL_FILE=blocks_with_real_energy.json"/>
+    <echo message="  ant test-energy-sort -DTEST_ENERGY_FILE=custom_energy.json"/>
+    <echo message=""/>
+    <echo message="Available strategies: jit, periodic, adaptive, proposed"/>
+    <echo message=""/>
+    <echo message="Output files:"/>
+    <echo message="  ./outputs/energy_log_*.csv    : Per-instruction energy consumption"/>
+    <echo message="  ./outputs/battery_log_*.csv   : Battery level over time"/>
+  </target>
 
   <target name="clean" description="clean up" >
     <delete dir="${build}"/>

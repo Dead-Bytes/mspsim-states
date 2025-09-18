@@ -133,6 +133,10 @@ public class MSP430Core extends Chip implements MSP430Constants {
 
   final ComponentRegistry registry;
   Profiler profiler;
+  protected DisAsm disAsm;
+
+  // Energy monitoring support
+  private InstructionEnergyListener energyListener;
 
   public MSP430Core(int type, ComponentRegistry registry, MSP430Config config) {
     super("MSP430", "MSP430 Core", null);
@@ -237,6 +241,9 @@ public class MSP430Core extends Chip implements MSP430Constants {
     // The CPU need to register itself as chip
     addChip(this);
 
+    // Initialize disassembler for energy monitoring
+    disAsm = new DisAsm();
+
     // Ignore type for now...
     setModeNames(MODE_NAMES);
     // IOUnits should likely be placed in a hashtable?
@@ -294,6 +301,55 @@ public class MSP430Core extends Chip implements MSP430Constants {
     registry.registerComponent("profiler", prof);
     profiler = prof;
     profiler.setCPU(this);
+  }
+
+  public InstructionEnergyListener getEnergyListener() {
+    return energyListener;
+  }
+
+  public void setEnergyListener(InstructionEnergyListener listener) {
+    this.energyListener = listener;
+    registry.registerComponent("energyListener", listener);
+  }
+
+  /**
+   * Extract mnemonic from instruction for energy monitoring
+   */
+  private String getInstructionMnemonic(int pc, int instruction) {
+    try {
+      DbgInstruction dbg = new DbgInstruction();
+      disAsm.disassemble(pc, memory, reg, dbg, servicedInterrupt);
+      String asmLine = dbg.getASMLine(false); // Get without registers
+      if (asmLine != null && !asmLine.isEmpty()) {
+        // Extract first word (mnemonic) from assembly line
+        String[] parts = asmLine.trim().split("\\s+");
+        if (parts.length > 0) {
+          return parts[0];
+        }
+      }
+    } catch (Exception e) {
+      // Fallback to basic opcode classification
+    }
+
+    // Fallback: basic opcode to mnemonic mapping
+    int op = instruction >> 12;
+    switch (op) {
+      case 0x1: return "SINGLE_OP"; // Single operand instructions
+      case 0x2: case 0x3: return "JUMP"; // Jump instructions
+      case 0x4: return "MOV";
+      case 0x5: return "ADD";
+      case 0x6: return "ADDC";
+      case 0x7: return "SUBC";
+      case 0x8: return "SUB";
+      case 0x9: return "CMP";
+      case 0xa: return "DADD";
+      case 0xb: return "BIT";
+      case 0xc: return "BIC";
+      case 0xd: return "BIS";
+      case 0xe: return "XOR";
+      case 0xf: return "AND";
+      default: return "UNKNOWN";
+    }
   }
 
   public synchronized void addGlobalMonitor(MemoryMonitor mon) {
@@ -2174,7 +2230,35 @@ public class MSP430Core extends Chip implements MSP430Constants {
     }
     
     cpuCycles += cycles - startCycles;
-    
+
+    // Energy monitoring - deduct energy for executed instruction
+    if (energyListener != null) {
+      String mnemonic = getInstructionMnemonic(pcBefore, instruction);
+
+      // Call beforeInstruction for block-level energy checking
+      energyListener.beforeInstruction(pcBefore, instruction, mnemonic, cycles);
+
+      // Check if system should halt due to insufficient energy
+      if (energyListener instanceof InstructionEnergyMonitor) {
+        InstructionEnergyMonitor monitor = (InstructionEnergyMonitor) energyListener;
+        if (monitor.isSystemHalted()) {
+          // Set CPU to off state to stop execution completely
+          cpuOff = true;
+          int statusReg = readRegister(SR);
+          writeRegister(SR, statusReg | CPUOFF); // Set CPUOFF bit in status register
+          return pcBefore; // Stop execution
+        }
+      }
+
+      // If this is an InstructionEnergyMonitor, deduct energy
+      double energyConsumed = 0.0;
+      if (energyListener instanceof InstructionEnergyMonitor) {
+        energyConsumed = ((InstructionEnergyMonitor) energyListener).deductInstructionEnergy(pcBefore, mnemonic);
+      }
+
+      energyListener.afterInstruction(pcBefore, instruction, mnemonic, cycles, energyConsumed);
+    }
+
     /* return the address that was executed */
     return pcBefore;
   }
