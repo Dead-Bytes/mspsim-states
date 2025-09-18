@@ -31,8 +31,7 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
     private int currentBlockStartAddress;
     private boolean blockEnergyChecked;
     private int blockInstructionCount;
-    private String lastLoggedBlock = "";
-    private int sameBlockCount = 0;
+    private boolean blockEnergyDeducted = false; // Track if we already deducted energy for this block
     private PrintWriter energyLogWriter;
     private PrintWriter blockLogWriter;
     private boolean energyLoggingInitialized;
@@ -52,8 +51,7 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
         this.currentBlockStartAddress = -1;
         this.blockEnergyChecked = false;
         this.blockInstructionCount = 0;
-        this.lastLoggedBlock = "";
-        this.sameBlockCount = 0;
+        this.blockEnergyDeducted = false;
 
         if (config.isEnergyLoggingEnabled()) {
             initializeEnergyLogging();
@@ -110,6 +108,7 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
                 currentBlockStartAddress = pc;
                 blockEnergyChecked = true;
                 blockInstructionCount = 0;
+                blockEnergyDeducted = false; // Reset for new block
 
                 // Log block start
                 System.out.println("BLOCK START: " + pcHex + " (predicted: " + blockData.predictedTotalEnergy + " nJ)");
@@ -191,15 +190,16 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
      * Complete the execution of a basic block and deduct its total predicted energy
      */
     private void completeBlock(int endPc) {
-        if (currentBlock == null) {
-            return;
+        if (currentBlock == null || blockEnergyDeducted) {
+            return; // Already completed this block or no current block
         }
 
         double blockEnergy = currentBlock.predictedTotalEnergy;
 
-        // Deduct the entire block energy
+        // Deduct the entire block energy (only once per block)
         totalConsumedEnergyNJ += blockEnergy;
         remainingEnergyNJ -= blockEnergy;
+        blockEnergyDeducted = true; // Mark as deducted
 
         if (remainingEnergyNJ <= 0) {
             remainingEnergyNJ = 0;
@@ -226,11 +226,12 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
             onEnergyDepleted();
         }
 
-        // Reset block tracking
+        // Reset block tracking for next block
         currentBlock = null;
         currentBlockStartAddress = -1;
         blockEnergyChecked = false;
         blockInstructionCount = 0;
+        blockEnergyDeducted = false;
     }
 
     /**
