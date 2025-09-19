@@ -12,8 +12,8 @@
   <property name="ant.build.javac.target" value="11"/>
   <property name="ARGS" value=""/>
 
-  <!-- Energy monitoring configuration properties -->
-  <property name="TOTAL_ENERGY_NJ" value="2000000.0"/>
+  <!-- Energy monitoring configuration properties Assuming a CR2032 battery -->
+  <property name="TOTAL_ENERGY_NJ" value="2430000000000.00"/> 
   <property name="ENERGY_MODEL_FILE" value="blocks_with_real_energy.json"/>
   <property name="ENERGY_LOGGING" value="true"/>
   <property name="ENERGY_CHECKPOINT_THRESHOLD" value="20.0"/>
