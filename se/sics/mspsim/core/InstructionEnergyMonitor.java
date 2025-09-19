@@ -15,6 +15,7 @@ import java.io.PrintWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import se.sics.mspsim.util.EnergyConfig;
+import se.sics.mspsim.util.EnergyHarvester;
 
 public class InstructionEnergyMonitor implements InstructionEnergyListener {
 
@@ -36,6 +37,11 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
     private PrintWriter blockLogWriter;
     private boolean energyLoggingInitialized;
 
+    // Energy harvesting
+    private EnergyHarvester energyHarvester;
+    private boolean harvestingEnabled;
+    private long blockStartTimeMS;
+
     public InstructionEnergyMonitor(EnergyConfig config) {
         this.config = config;
         this.remainingEnergyNJ = config.getTotalEnergyNanoJoules();
@@ -52,6 +58,18 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
         this.blockEnergyChecked = false;
         this.blockInstructionCount = 0;
         this.blockEnergyDeducted = false;
+
+        // Energy harvesting initialization
+        String harvestingEnabledStr = System.getenv("ENERGY_HARVESTING_ENABLED");
+        this.harvestingEnabled = harvestingEnabledStr != null && Boolean.parseBoolean(harvestingEnabledStr);
+
+        if (harvestingEnabled) {
+            this.energyHarvester = EnergyHarvester.createFromEnv();
+            System.out.println("Energy harvesting enabled: " + energyHarvester.getStatusString());
+        } else {
+            this.energyHarvester = null;
+            System.out.println("Energy harvesting disabled");
+        }
 
         if (config.isEnergyLoggingEnabled()) {
             initializeEnergyLogging();
@@ -71,7 +89,7 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
             blockLogWriter = new PrintWriter(new FileWriter(blockLogFileName));
 
             energyLogWriter.println("InstructionCount,PC,Mnemonic,BlockStart,BlockEnd,InstructionEnergy,RemainingEnergy,BatteryPercent,CPUCycles");
-            blockLogWriter.println("BlockStartAddr,BlockEndAddr,PredictedEnergy,ActualInstructions,EnergyConsumed,RemainingAfter,BatteryPercent,ExecutionTime");
+            blockLogWriter.println("BlockStartAddr,BlockEndAddr,PredictedEnergy,ActualInstructions,EnergyConsumed,EnergyHarvested,NetEnergyChange,RemainingAfter,BatteryPercent,ExecutionTimeMS");
 
             energyLoggingInitialized = true;
             System.out.println("Block-level energy logging started:");
@@ -109,9 +127,25 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
                 blockEnergyChecked = true;
                 blockInstructionCount = 0;
                 blockEnergyDeducted = false; // Reset for new block
+                blockStartTimeMS = System.currentTimeMillis(); // Track block execution start time
 
-                // Log block start
-                System.out.println("BLOCK START: " + pcHex + " (predicted: " + blockData.predictedTotalEnergy + " nJ)");
+                // If harvesting is enabled, predict energy balance
+                if (harvestingEnabled && energyHarvester != null) {
+                    // Estimate block execution time (simplified: 1ms per nJ of energy)
+                    long estimatedExecutionTimeMS = (long) blockData.predictedTotalEnergy;
+                    EnergyHarvester.EnergyBalance balance = energyHarvester.predictEnergyBalanceForBlock(
+                        blockData.predictedTotalEnergy, estimatedExecutionTimeMS);
+
+                    System.out.println("BLOCK START: " + pcHex + " (predicted: " + blockData.predictedTotalEnergy + " nJ)");
+                    System.out.println("  Energy balance: " + balance);
+
+                    // Warning if harvesting can't keep up
+                    if (!balance.isEnergyPositive) {
+                        System.out.println("  WARNING: Block will consume more energy than harvested!");
+                    }
+                } else {
+                    System.out.println("BLOCK START: " + pcHex + " (predicted: " + blockData.predictedTotalEnergy + " nJ)");
+                }
             }
         }
     }
@@ -188,6 +222,7 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
 
     /**
      * Complete the execution of a basic block and deduct its total predicted energy
+     * Also handles energy harvesting during block execution
      */
     private void completeBlock(int endPc) {
         if (currentBlock == null || blockEnergyDeducted) {
@@ -195,31 +230,51 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
         }
 
         double blockEnergy = currentBlock.predictedTotalEnergy;
+        long blockExecutionTimeMS = System.currentTimeMillis() - blockStartTimeMS;
+        double harvestedEnergy = 0.0;
+
+        // Handle energy harvesting during block execution
+        if (harvestingEnabled && energyHarvester != null) {
+            harvestedEnergy = energyHarvester.calculateHarvestedEnergyForDuration(blockExecutionTimeMS);
+            remainingEnergyNJ += harvestedEnergy; // Add harvested energy
+        }
 
         // Deduct the entire block energy (only once per block)
         totalConsumedEnergyNJ += blockEnergy;
         remainingEnergyNJ -= blockEnergy;
         blockEnergyDeducted = true; // Mark as deducted
 
+        double netEnergyChange = harvestedEnergy - blockEnergy;
+
         if (remainingEnergyNJ <= 0) {
             remainingEnergyNJ = 0;
             energyDepleted = true;
         }
 
-        // Log block completion
+        // Log block completion with harvesting details
         if (blockLogWriter != null) {
             double batteryPercent = getBatteryPercentage();
-            blockLogWriter.printf("%s,%s,%.6f,%d,%.6f,%.6f,%.2f,%d%n",
+            blockLogWriter.printf("%s,%s,%.6f,%d,%.6f,%.6f,%.6f,%.6f,%.2f,%d%n",
                 currentBlock.startAddress, currentBlock.endAddress,
                 currentBlock.predictedTotalEnergy, blockInstructionCount,
-                blockEnergy, remainingEnergyNJ, batteryPercent,
-                System.currentTimeMillis());
+                blockEnergy, harvestedEnergy, netEnergyChange, remainingEnergyNJ, batteryPercent,
+                blockExecutionTimeMS);
             blockLogWriter.flush();
         }
 
-        System.out.println("BLOCK COMPLETE: " + currentBlock.startAddress + " -> " +
-                         currentBlock.endAddress + " (consumed: " + blockEnergy + " nJ, " +
-                         "remaining: " + remainingEnergyNJ + " nJ)");
+        // Enhanced logging with harvesting information
+        if (harvestingEnabled && energyHarvester != null) {
+            System.out.println("BLOCK COMPLETE: " + currentBlock.startAddress + " -> " +
+                             currentBlock.endAddress + " (time: " + blockExecutionTimeMS + " ms)");
+            System.out.println("  Consumed: " + String.format("%.2f", blockEnergy) + " nJ");
+            System.out.println("  Harvested: " + String.format("%.2f", harvestedEnergy) + " nJ");
+            System.out.println("  Net change: " + String.format("%.2f", netEnergyChange) + " nJ");
+            System.out.println("  Remaining: " + String.format("%.2f", remainingEnergyNJ) + " nJ");
+        } else {
+            System.out.println("BLOCK COMPLETE: " + currentBlock.startAddress + " -> " +
+                             currentBlock.endAddress + " (consumed: " + blockEnergy + " nJ, " +
+                             "remaining: " + remainingEnergyNJ + " nJ)");
+        }
 
         // Check for energy depletion
         if (energyDepleted) {

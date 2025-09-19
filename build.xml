@@ -19,6 +19,13 @@
   <property name="ENERGY_CHECKPOINT_THRESHOLD" value="20.0"/>
   <property name="STRATEGY" value="adaptive"/>
 
+  <!-- Energy harvesting configuration properties -->
+  <property name="ENERGY_HARVESTING_ENABLED" value="true"/>
+  <property name="HARVESTER_PANEL_AREA_CM2" value="1.0"/>
+  <property name="HARVESTER_PANEL_EFFICIENCY" value="20"/>
+  <property name="HARVESTER_IRRADIANCE_WM2" value="500.0"/>
+  <property name="HARVESTER_PROFILE" value="static"/>
+
   <path id="classpath">
     <fileset dir="${lib}" includes="**/*.jar"/>
   </path>
@@ -96,6 +103,11 @@
       <env key="ENERGY_LOGGING" value="${ENERGY_LOGGING}"/>
       <env key="ENERGY_CHECKPOINT_THRESHOLD" value="${ENERGY_CHECKPOINT_THRESHOLD}"/>
       <env key="STRATEGY" value="${STRATEGY}"/>
+      <env key="ENERGY_HARVESTING_ENABLED" value="${ENERGY_HARVESTING_ENABLED}"/>
+      <env key="HARVESTER_PANEL_AREA_CM2" value="${HARVESTER_PANEL_AREA_CM2}"/>
+      <env key="HARVESTER_PANEL_EFFICIENCY" value="${HARVESTER_PANEL_EFFICIENCY}"/>
+      <env key="HARVESTER_IRRADIANCE_WM2" value="${HARVESTER_IRRADIANCE_WM2}"/>
+      <env key="HARVESTER_PROFILE" value="${HARVESTER_PROFILE}"/>
       <jvmarg value="-Djava.awt.headless=false"/>
       <arg value="${FIRMWAREFILE}"/>
       <arg line="${ARGS}"/>
