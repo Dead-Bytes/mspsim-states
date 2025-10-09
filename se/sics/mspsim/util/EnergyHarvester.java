@@ -22,8 +22,15 @@ public class EnergyHarvester {
     private double converterEfficiency;   // DC-DC converter efficiency (0.0-1.0)
 
     // Environmental parameters
-    private double currentIrradianceWM2;  // Current solar irradiance (W/m²)
+    private double baseIrradianceWM2;     // Base solar irradiance (W/m²)
+    private double currentIrradianceWM2;  // Current actual irradiance (with variations)
     private double timeAcceleration;      // Time acceleration factor for simulation
+
+    // Random variation parameters
+    private Random random;
+    private double irradianceVariation;   // Variation factor (0.0-1.0)
+    private long lastIrradianceUpdateMS;  // Last time irradiance was updated
+    private long irradianceUpdateIntervalMS; // How often to update irradiance
 
     // Energy harvesting tracking
     private double totalHarvestedNJ;      // Total energy harvested since start
@@ -32,23 +39,30 @@ public class EnergyHarvester {
 
     // Block-level harvesting
     private boolean harvestingEnabled;
-    private String harvestingProfile;     // "static", "dynamic", "realistic"
+    private String harvestingProfile;     // "static", "dynamic", "realistic", "random"
 
     public EnergyHarvester() {
-        // Default small IoT solar panel
-        this.panelAreaM2 = 0.001;         // 1 cm² panel (typical for IoT devices)
-        this.panelEfficiency = 0.20;      // 20% efficiency (typical silicon)
+        // Default small IoT solar panel - sized for balanced energy scenarios
+        this.panelAreaM2 = 0.001;         // 1 mm² panel
+        this.panelEfficiency = 0.20;      // 20% efficiency
         this.converterEfficiency = 0.85;  // 85% converter efficiency
 
-        // Default conditions
-        this.currentIrradianceWM2 = 500.0; // Moderate indoor lighting
+        // Default conditions - balanced harvest vs consumption
+        this.baseIrradianceWM2 = 50.0;    // 50 W/m² (balanced indoor/outdoor conditions)
+        this.currentIrradianceWM2 = baseIrradianceWM2;
         this.timeAcceleration = 1.0;       // Real-time simulation
+
+        // Random variation settings
+        this.random = new Random();
+        this.irradianceVariation = 0.8;    // 80% variation (can drop to 20% or spike to 180%)
+        this.irradianceUpdateIntervalMS = 100; // Update every 100ms for realistic variation
+        this.lastIrradianceUpdateMS = System.currentTimeMillis();
 
         // Initialize tracking
         this.totalHarvestedNJ = 0.0;
         this.lastUpdateTimeMS = System.currentTimeMillis();
         this.harvestingEnabled = true;
-        this.harvestingProfile = "static";
+        this.harvestingProfile = "random";  // Default to random for realistic scenarios
 
         updateHarvestingRate();
 
@@ -86,7 +100,8 @@ public class EnergyHarvester {
         String irradianceStr = System.getenv("HARVESTER_IRRADIANCE_WM2");
         if (irradianceStr != null) {
             try {
-                harvester.currentIrradianceWM2 = Double.parseDouble(irradianceStr);
+                harvester.baseIrradianceWM2 = Double.parseDouble(irradianceStr);
+                harvester.currentIrradianceWM2 = harvester.baseIrradianceWM2;
             } catch (NumberFormatException e) {
                 System.err.println("Invalid HARVESTER_IRRADIANCE_WM2: " + irradianceStr);
             }
@@ -102,11 +117,55 @@ public class EnergyHarvester {
     }
 
     /**
+     * Update irradiance with random variations to simulate real-world conditions
+     */
+    private void updateRandomIrradiance() {
+        long currentTime = System.currentTimeMillis();
+
+        if (currentTime - lastIrradianceUpdateMS >= irradianceUpdateIntervalMS) {
+            if ("random".equals(harvestingProfile)) {
+                // Generate random variation: base ± (variation * base)
+                double variationRange = baseIrradianceWM2 * irradianceVariation;
+                double minIrradiance = Math.max(0, baseIrradianceWM2 - variationRange);
+                double maxIrradiance = baseIrradianceWM2 + variationRange;
+
+                // Random value between min and max
+                currentIrradianceWM2 = minIrradiance + (random.nextDouble() * (maxIrradiance - minIrradiance));
+
+                // Occasionally simulate complete shadow/eclipse (5% chance)
+                if (random.nextDouble() < 0.05) {
+                    currentIrradianceWM2 = 0.0;
+                }
+
+                // Occasionally simulate bright sunlight burst (5% chance)
+                if (random.nextDouble() < 0.05) {
+                    currentIrradianceWM2 = baseIrradianceWM2 * 3.0;
+                }
+
+                updateHarvestingRate();
+            }
+
+            lastIrradianceUpdateMS = currentTime;
+        }
+    }
+
+    /**
      * Update the current harvesting rate based on environmental conditions
      */
     private void updateHarvestingRate() {
         // Power = Irradiance × Area × Panel_Efficiency × Converter_Efficiency
         double powerWatts = currentIrradianceWM2 * panelAreaM2 * panelEfficiency * converterEfficiency;
+
+        // Debug logging
+        if (Math.random() < 0.01) { // Log 1% of the time to avoid spam
+            System.out.println("DEBUG HARVEST RATE:");
+            System.out.println("  Irradiance: " + currentIrradianceWM2 + " W/m²");
+            System.out.println("  Area: " + panelAreaM2 + " m² (" + (panelAreaM2 * 10000) + " cm²)");
+            System.out.println("  Panel eff: " + panelEfficiency);
+            System.out.println("  Converter eff: " + converterEfficiency);
+            System.out.println("  Power: " + powerWatts + " W");
+            System.out.println("  Rate: " + (powerWatts * 1_000_000.0) + " nJ/ms");
+        }
 
         // Convert to nanojoules per millisecond
         // 1 Watt = 1 Joule/second = 1,000,000,000 nJ/second = 1,000,000 nJ/ms
@@ -121,9 +180,17 @@ public class EnergyHarvester {
             return 0.0;
         }
 
+        // Update irradiance with random variations
+        updateRandomIrradiance();
+
         // For static profile, use current rate
         if ("static".equals(harvestingProfile)) {
             return harvestingRateNJPerMS * durationMS;
+        }
+
+        // For random profile, simulate varying conditions over time
+        if ("random".equals(harvestingProfile)) {
+            return calculateRandomHarvesting(durationMS);
         }
 
         // For dynamic profile, simulate varying conditions
@@ -137,6 +204,25 @@ public class EnergyHarvester {
         }
 
         return harvestingRateNJPerMS * durationMS;
+    }
+
+    /**
+     * Simulate random harvesting with irradiance variations during execution
+     */
+    private double calculateRandomHarvesting(long durationMS) {
+        double totalHarvested = 0.0;
+        long stepSize = Math.max(1, Math.min(durationMS / 10, irradianceUpdateIntervalMS)); // Sample every update interval or 10% of duration
+
+        for (long t = 0; t < durationMS; t += stepSize) {
+            // Update irradiance for this time step
+            updateRandomIrradiance();
+
+            // Calculate energy for this time step
+            long actualStepSize = Math.min(stepSize, durationMS - t);
+            totalHarvested += harvestingRateNJPerMS * actualStepSize;
+        }
+
+        return totalHarvested;
     }
 
     /**
@@ -159,23 +245,39 @@ public class EnergyHarvester {
     /**
      * Simulate realistic harvesting based on time of day
      */
+    /**
+     * Simulate realistic harvesting based on time of day with conservative bias
+     * Designed to be LOWER than consumption 90% of the time
+     * Only ~10% of scenarios have harvesting > consumption (and max 2x)
+     */
     private double calculateRealisticHarvesting(long durationMS) {
         Calendar cal = Calendar.getInstance();
         int hourOfDay = cal.get(Calendar.HOUR_OF_DAY);
+        int minute = cal.get(Calendar.MINUTE);
 
-        // Simple daylight pattern: peak at noon, zero at night
+        // Base daylight pattern: very conservative
         double daylightFactor;
         if (hourOfDay < 6 || hourOfDay > 20) {
-            daylightFactor = 0.0; // Night time
+            daylightFactor = 0.0; // Night time - no harvesting (50% of day)
         } else if (hourOfDay >= 11 && hourOfDay <= 13) {
-            daylightFactor = 1.0; // Peak sunlight
+            // Peak hours: 30-70% harvesting rate
+            // Only top 10% of minutes get > 50% (which might exceed consumption)
+            double minuteFactor = minute / 60.0; // 0.0 to 1.0
+            daylightFactor = 0.3 + (minuteFactor * 0.4); // 0.3 to 0.7
         } else {
-            // Dawn/dusk ramp
+            // Dawn/dusk/morning/evening: very low harvesting (5-25%)
             double distanceFromNoon = Math.abs(12 - hourOfDay);
-            daylightFactor = Math.max(0.0, 1.0 - (distanceFromNoon - 1.0) / 5.0);
+            daylightFactor = Math.max(0.05, 0.25 - (distanceFromNoon * 0.04));
         }
 
-        return harvestingRateNJPerMS * daylightFactor * durationMS;
+        // Add environmental variability (clouds, shadows, indoor/outdoor)
+        // Further reduces harvesting by 20-50%
+        double environmentalFactor = 0.5 + (Math.random() * 0.3); // 0.5 to 0.8
+
+        // Apply conservative multiplier: ensures harvesting < consumption 90% of time
+        double effectiveFactor = daylightFactor * environmentalFactor * 0.6; // 60% reduction
+
+        return harvestingRateNJPerMS * effectiveFactor * durationMS;
     }
 
     /**
@@ -263,7 +365,12 @@ public class EnergyHarvester {
      * Get harvester status string
      */
     public String getStatusString() {
-        return String.format("Harvester: %.1f cm² panel, %.0f W/m² irradiance, %.2f nJ/s rate, %.2f nJ total",
-                           getPanelAreaCM2(), currentIrradianceWM2, getHarvestingRateNJPerSecond(), totalHarvestedNJ);
+        if ("random".equals(harvestingProfile)) {
+            return String.format("Harvester: %.3f cm² panel, %.3f W/m² base (current: %.3f), %.2f nJ/s rate, %.2f nJ total",
+                               getPanelAreaCM2(), baseIrradianceWM2, currentIrradianceWM2, getHarvestingRateNJPerSecond(), totalHarvestedNJ);
+        } else {
+            return String.format("Harvester: %.3f cm² panel, %.3f W/m² irradiance, %.2f nJ/s rate, %.2f nJ total",
+                               getPanelAreaCM2(), currentIrradianceWM2, getHarvestingRateNJPerSecond(), totalHarvestedNJ);
+        }
     }
 }

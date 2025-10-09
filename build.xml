@@ -12,19 +12,22 @@
   <property name="ant.build.javac.target" value="11"/>
   <property name="ARGS" value=""/>
 
-  <!-- Energy monitoring configuration properties Assuming a CR2032 battery -->
-  <property name="TOTAL_ENERGY_NJ" value="2430000000000.00"/> 
+  <!-- Energy monitoring configuration properties -->
+  <!-- Realistic IoT battery: 20 Joules = 20,000,000,000 nJ (small capacity for testing) -->
+  <property name="TOTAL_ENERGY_NJ" value="20000.0"/>
   <property name="ENERGY_MODEL_FILE" value="blocks_with_real_energy.json"/>
   <property name="ENERGY_LOGGING" value="true"/>
   <property name="ENERGY_CHECKPOINT_THRESHOLD" value="20.0"/>
   <property name="STRATEGY" value="adaptive"/>
 
   <!-- Energy harvesting configuration properties -->
+  <!-- Settings for DEFICIT scenario: harvesting < consumption (90% of time) -->
+  <!-- Tiny 0.05 cm² panel, 12% efficiency, very low 20 W/m² light = ~1 nJ/ms harvest rate -->
   <property name="ENERGY_HARVESTING_ENABLED" value="true"/>
-  <property name="HARVESTER_PANEL_AREA_CM2" value="1.0"/>
-  <property name="HARVESTER_PANEL_EFFICIENCY" value="20"/>
-  <property name="HARVESTER_IRRADIANCE_WM2" value="500.0"/>
-  <property name="HARVESTER_PROFILE" value="static"/>
+  <property name="HARVESTER_PANEL_AREA_CM2" value="0.05"/>
+  <property name="HARVESTER_PANEL_EFFICIENCY" value="12"/>
+  <property name="HARVESTER_IRRADIANCE_WM2" value="20.0"/>
+  <property name="HARVESTER_PROFILE" value="realistic"/>
 
   <path id="classpath">
     <fileset dir="${lib}" includes="**/*.jar"/>

@@ -41,6 +41,8 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
     private EnergyHarvester energyHarvester;
     private boolean harvestingEnabled;
     private long blockStartTimeMS;
+    private long previousBlockExecutionTimeMS = 0; // Track previous block execution time for prediction
+    private double executionTimeSafetyMargin = 0.2; // 20% safety margin for execution time prediction
 
     public InstructionEnergyMonitor(EnergyConfig config) {
         this.config = config;
@@ -129,18 +131,43 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
                 blockEnergyDeducted = false; // Reset for new block
                 blockStartTimeMS = System.currentTimeMillis(); // Track block execution start time
 
-                // If harvesting is enabled, predict energy balance
+                // If harvesting is enabled, predict energy balance using previous block execution time
                 if (harvestingEnabled && energyHarvester != null) {
-                    // Estimate block execution time (simplified: 1ms per nJ of energy)
-                    long estimatedExecutionTimeMS = (long) blockData.predictedTotalEnergy;
-                    EnergyHarvester.EnergyBalance balance = energyHarvester.predictEnergyBalanceForBlock(
-                        blockData.predictedTotalEnergy, estimatedExecutionTimeMS);
+                    // Predict execution time based on previous block with safety margin
+                    long predictedExecutionTimeMS;
+                    if (previousBlockExecutionTimeMS > 0) {
+                        // Use 80% of previous block time (20% safety margin as you requested)
+                        predictedExecutionTimeMS = (long) (previousBlockExecutionTimeMS * (1.0 - executionTimeSafetyMargin));
+                        System.out.println("BLOCK START: " + pcHex + " (predicted: " + blockData.predictedTotalEnergy + " nJ)");
+                        System.out.println("  Predicted execution time: " + predictedExecutionTimeMS + " ms (based on previous: " + previousBlockExecutionTimeMS + " ms)");
+                    } else {
+                        // First block: use simplified estimation
+                        predictedExecutionTimeMS = Math.max(1, (long) blockData.predictedTotalEnergy);
+                        System.out.println("BLOCK START: " + pcHex + " (predicted: " + blockData.predictedTotalEnergy + " nJ)");
+                        System.out.println("  Predicted execution time: " + predictedExecutionTimeMS + " ms (first block estimation)");
+                    }
 
-                    System.out.println("BLOCK START: " + pcHex + " (predicted: " + blockData.predictedTotalEnergy + " nJ)");
-                    System.out.println("  Energy balance: " + balance);
+                    // Predict energy balance for the block
+                    EnergyHarvester.EnergyBalance balance = energyHarvester.predictEnergyBalanceForBlock(
+                        blockData.predictedTotalEnergy, predictedExecutionTimeMS);
+
+                    System.out.println("  Predicted harvest: " + String.format("%.2f", balance.harvestedEnergy) + " nJ");
+                    System.out.println("  Net energy change: " + String.format("%.2f", balance.netEnergyChange) + " nJ");
+
+                    // Determine energy scenario
+                    double consumptionVsHarvest = Math.abs(balance.netEnergyChange) / blockData.predictedTotalEnergy;
+                    String scenario;
+                    if (consumptionVsHarvest <= 0.10) { // Within 10% margin
+                        scenario = "BALANCED";
+                    } else if (balance.netEnergyChange < 0) {
+                        scenario = "CONSUMING";
+                    } else {
+                        scenario = "CHARGING";
+                    }
+                    System.out.println("  Energy scenario: " + scenario);
 
                     // Warning if harvesting can't keep up
-                    if (!balance.isEnergyPositive) {
+                    if ("CONSUMING".equals(scenario)) {
                         System.out.println("  WARNING: Block will consume more energy than harvested!");
                     }
                 } else {
@@ -233,18 +260,18 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
         long blockExecutionTimeMS = System.currentTimeMillis() - blockStartTimeMS;
         double harvestedEnergy = 0.0;
 
-        // Handle energy harvesting during block execution
+        // Calculate actual energy harvested during real block execution time
         if (harvestingEnabled && energyHarvester != null) {
             harvestedEnergy = energyHarvester.calculateHarvestedEnergyForDuration(blockExecutionTimeMS);
-            remainingEnergyNJ += harvestedEnergy; // Add harvested energy
         }
 
-        // Deduct the entire block energy (only once per block)
-        totalConsumedEnergyNJ += blockEnergy;
-        remainingEnergyNJ -= blockEnergy;
-        blockEnergyDeducted = true; // Mark as deducted
-
+        // Apply net energy change to battery: harvest first, then consume
         double netEnergyChange = harvestedEnergy - blockEnergy;
+        remainingEnergyNJ += netEnergyChange; // Net change (can be positive or negative)
+
+        // Update tracking variables
+        totalConsumedEnergyNJ += blockEnergy;
+        blockEnergyDeducted = true; // Mark as deducted
 
         if (remainingEnergyNJ <= 0) {
             remainingEnergyNJ = 0;
@@ -264,17 +291,35 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
 
         // Enhanced logging with harvesting information
         if (harvestingEnabled && energyHarvester != null) {
+            // Determine actual energy scenario based on real results
+            double consumptionVsHarvest = Math.abs(netEnergyChange) / blockEnergy;
+            String actualScenario;
+            if (consumptionVsHarvest <= 0.10) { // Within 10% margin
+                actualScenario = "BALANCED";
+            } else if (netEnergyChange < 0) {
+                actualScenario = "CONSUMING";
+            } else {
+                actualScenario = "CHARGING";
+            }
+
             System.out.println("BLOCK COMPLETE: " + currentBlock.startAddress + " -> " +
-                             currentBlock.endAddress + " (time: " + blockExecutionTimeMS + " ms)");
+                             currentBlock.endAddress + " (actual time: " + blockExecutionTimeMS + " ms)");
             System.out.println("  Consumed: " + String.format("%.2f", blockEnergy) + " nJ");
-            System.out.println("  Harvested: " + String.format("%.2f", harvestedEnergy) + " nJ");
-            System.out.println("  Net change: " + String.format("%.2f", netEnergyChange) + " nJ");
-            System.out.println("  Remaining: " + String.format("%.2f", remainingEnergyNJ) + " nJ");
+            System.out.println("  Harvested: " + String.format("%.2f", harvestedEnergy) + " nJ (rate: " +
+                             String.format("%.0f", energyHarvester.getHarvestingRateNJPerSecond()) + " nJ/s)");
+            System.out.println("  Net delta: " + String.format("%.2f", netEnergyChange) + " nJ " +
+                             (netEnergyChange >= 0 ? "(gained)" : "(lost)"));
+            System.out.println("  Actual scenario: " + actualScenario);
+            System.out.println("  Battery: " + String.format("%.2f", remainingEnergyNJ) + " nJ (" +
+                             String.format("%.1f", getBatteryPercentage()) + "%)");
         } else {
             System.out.println("BLOCK COMPLETE: " + currentBlock.startAddress + " -> " +
                              currentBlock.endAddress + " (consumed: " + blockEnergy + " nJ, " +
                              "remaining: " + remainingEnergyNJ + " nJ)");
         }
+
+        // Store actual execution time for next block prediction
+        previousBlockExecutionTimeMS = blockExecutionTimeMS;
 
         // Check for energy depletion
         if (energyDepleted) {
