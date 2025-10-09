@@ -246,36 +246,72 @@ public class EnergyHarvester {
      * Simulate realistic harvesting based on time of day
      */
     /**
-     * Simulate realistic harvesting based on time of day with conservative bias
-     * Designed to be LOWER than consumption 90% of the time
-     * Only ~10% of scenarios have harvesting > consumption (and max 2x)
+     * Simulate realistic harvesting with battery-level awareness
+     * Charging probability varies by battery region:
+     * - GOOD region (>70%): 5-10% charging scenarios
+     * - MODERATE region (30-70%): 10-20% charging scenarios
+     * - LOW region (<30%): 20-30% charging scenarios (survival mode)
      */
     private double calculateRealisticHarvesting(long durationMS) {
+        return calculateRealisticHarvestingWithBattery(durationMS, -1); // Use default if battery unknown
+    }
+
+    /**
+     * Calculate realistic harvesting with explicit battery level
+     */
+    public double calculateRealisticHarvestingWithBattery(long durationMS, double batteryPercent) {
         Calendar cal = Calendar.getInstance();
         int hourOfDay = cal.get(Calendar.HOUR_OF_DAY);
         int minute = cal.get(Calendar.MINUTE);
 
-        // Base daylight pattern: very conservative
+        // Determine battery region and corresponding charging probability
+        double chargingProbability;
+        double harvestingBoost;
+
+        if (batteryPercent < 0) {
+            // Battery level unknown, use default moderate behavior
+            chargingProbability = 0.15; // 15% default
+            harvestingBoost = 1.0;
+        } else if (batteryPercent > 70.0) {
+            // GOOD region: 5-10% charging scenarios (minimal effort)
+            chargingProbability = 0.05 + (Math.random() * 0.05); // 5-10%
+            harvestingBoost = 0.8; // Reduce harvesting by 20%
+        } else if (batteryPercent > 30.0) {
+            // MODERATE region: 10-20% charging scenarios
+            chargingProbability = 0.10 + (Math.random() * 0.10); // 10-20%
+            harvestingBoost = 1.0; // Normal harvesting
+        } else {
+            // LOW region: 20-30% charging scenarios (aggressive survival mode)
+            chargingProbability = 0.20 + (Math.random() * 0.10); // 20-30%
+            harvestingBoost = 1.5; // Increase harvesting by 50%
+        }
+
+        // Base daylight pattern
         double daylightFactor;
         if (hourOfDay < 6 || hourOfDay > 20) {
-            daylightFactor = 0.0; // Night time - no harvesting (50% of day)
+            daylightFactor = 0.0; // Night time
         } else if (hourOfDay >= 11 && hourOfDay <= 13) {
-            // Peak hours: 30-70% harvesting rate
-            // Only top 10% of minutes get > 50% (which might exceed consumption)
-            double minuteFactor = minute / 60.0; // 0.0 to 1.0
-            daylightFactor = 0.3 + (minuteFactor * 0.4); // 0.3 to 0.7
+            // Peak hours with battery-aware boost
+            double minuteFactor = minute / 60.0;
+            daylightFactor = 0.3 + (minuteFactor * 0.4 * (1.0 + chargingProbability));
         } else {
-            // Dawn/dusk/morning/evening: very low harvesting (5-25%)
+            // Dawn/dusk
             double distanceFromNoon = Math.abs(12 - hourOfDay);
             daylightFactor = Math.max(0.05, 0.25 - (distanceFromNoon * 0.04));
         }
 
-        // Add environmental variability (clouds, shadows, indoor/outdoor)
-        // Further reduces harvesting by 20-50%
-        double environmentalFactor = 0.5 + (Math.random() * 0.3); // 0.5 to 0.8
+        // Environmental variability
+        double environmentalFactor = 0.5 + (Math.random() * 0.3);
 
-        // Apply conservative multiplier: ensures harvesting < consumption 90% of time
-        double effectiveFactor = daylightFactor * environmentalFactor * 0.6; // 60% reduction
+        // Random "good positioning" events based on charging probability
+        // Simulates device repositioning or shadows clearing
+        if (Math.random() < chargingProbability) {
+            // Good harvesting event - significant boost
+            environmentalFactor *= (1.5 + Math.random() * 0.5); // 1.5x to 2.0x boost
+        }
+
+        // Apply battery-aware harvesting with boost
+        double effectiveFactor = daylightFactor * environmentalFactor * harvestingBoost * 0.6;
 
         return harvestingRateNJPerMS * effectiveFactor * durationMS;
     }
@@ -299,11 +335,18 @@ public class EnergyHarvester {
     }
 
     /**
-     * Predict energy balance for a block execution
-     * Returns: { harvestedEnergy, netEnergyChange, isEnergyPositive }
+     * Predict energy balance for a block execution (without battery level)
      */
     public EnergyBalance predictEnergyBalanceForBlock(double blockEnergyConsumption, long blockExecutionTimeMS) {
-        double harvestedEnergy = calculateHarvestedEnergyForDuration(blockExecutionTimeMS);
+        return predictEnergyBalanceForBlock(blockEnergyConsumption, blockExecutionTimeMS, -1);
+    }
+
+    /**
+     * Predict energy balance for a block execution with battery-aware harvesting
+     * Returns: { harvestedEnergy, netEnergyChange, isEnergyPositive }
+     */
+    public EnergyBalance predictEnergyBalanceForBlock(double blockEnergyConsumption, long blockExecutionTimeMS, double batteryPercent) {
+        double harvestedEnergy = calculateRealisticHarvestingWithBattery(blockExecutionTimeMS, batteryPercent);
         double netEnergyChange = harvestedEnergy - blockEnergyConsumption;
         boolean isEnergyPositive = netEnergyChange > 0;
 

@@ -29,6 +29,9 @@
   <property name="HARVESTER_IRRADIANCE_WM2" value="20.0"/>
   <property name="HARVESTER_PROFILE" value="realistic"/>
 
+  <!-- Adaptive checkpointing configuration -->
+  <property name="CHECKPOINTING_ENABLED" value="true"/>
+
   <path id="classpath">
     <fileset dir="${lib}" includes="**/*.jar"/>
   </path>
@@ -111,6 +114,7 @@
       <env key="HARVESTER_PANEL_EFFICIENCY" value="${HARVESTER_PANEL_EFFICIENCY}"/>
       <env key="HARVESTER_IRRADIANCE_WM2" value="${HARVESTER_IRRADIANCE_WM2}"/>
       <env key="HARVESTER_PROFILE" value="${HARVESTER_PROFILE}"/>
+      <env key="CHECKPOINTING_ENABLED" value="${CHECKPOINTING_ENABLED}"/>
       <jvmarg value="-Djava.awt.headless=false"/>
       <arg value="${FIRMWAREFILE}"/>
       <arg line="${ARGS}"/>

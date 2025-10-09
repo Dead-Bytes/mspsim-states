@@ -16,6 +16,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import se.sics.mspsim.util.EnergyConfig;
 import se.sics.mspsim.util.EnergyHarvester;
+import se.sics.mspsim.core.CheckpointStrategy;
 
 public class InstructionEnergyMonitor implements InstructionEnergyListener {
 
@@ -41,8 +42,14 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
     private EnergyHarvester energyHarvester;
     private boolean harvestingEnabled;
     private long blockStartTimeMS;
-    private long previousBlockExecutionTimeMS = 0; // Track previous block execution time for prediction
-    private double executionTimeSafetyMargin = 0.2; // 20% safety margin for execution time prediction
+
+    // Checkpointing strategy
+    private CheckpointStrategy checkpointStrategy;
+    private boolean checkpointingEnabled;
+
+    // Block execution time tracking for prediction
+    private long previousBlockExecutionTimeMS = 0;
+    private double executionTimeSafetyMargin = 0.2; // 20% safety margin
 
     public InstructionEnergyMonitor(EnergyConfig config) {
         this.config = config;
@@ -71,6 +78,17 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
         } else {
             this.energyHarvester = null;
             System.out.println("Energy harvesting disabled");
+        }
+
+        // Checkpointing initialization
+        String checkpointingEnabledStr = System.getenv("CHECKPOINTING_ENABLED");
+        this.checkpointingEnabled = checkpointingEnabledStr == null || Boolean.parseBoolean(checkpointingEnabledStr);
+
+        if (checkpointingEnabled) {
+            this.checkpointStrategy = new CheckpointStrategy(config.isEnergyLoggingEnabled());
+        } else {
+            this.checkpointStrategy = null;
+            System.out.println("Checkpointing disabled");
         }
 
         if (config.isEnergyLoggingEnabled()) {
@@ -147,9 +165,10 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
                         System.out.println("  Predicted execution time: " + predictedExecutionTimeMS + " ms (first block estimation)");
                     }
 
-                    // Predict energy balance for the block
+                    // Predict energy balance for the block with battery-aware harvesting
+                    double batteryPercent = getBatteryPercentage();
                     EnergyHarvester.EnergyBalance balance = energyHarvester.predictEnergyBalanceForBlock(
-                        blockData.predictedTotalEnergy, predictedExecutionTimeMS);
+                        blockData.predictedTotalEnergy, predictedExecutionTimeMS, batteryPercent);
 
                     System.out.println("  Predicted harvest: " + String.format("%.2f", balance.harvestedEnergy) + " nJ");
                     System.out.println("  Net energy change: " + String.format("%.2f", balance.netEnergyChange) + " nJ");
@@ -165,6 +184,22 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
                         scenario = "CHARGING";
                     }
                     System.out.println("  Energy scenario: " + scenario);
+
+                    // Evaluate checkpointing decision
+                    if (checkpointingEnabled && checkpointStrategy != null) {
+                        CheckpointStrategy.CheckpointDecision cpDecision = checkpointStrategy.shouldCheckpoint(
+                            batteryPercent,
+                            blockData.predictedTotalEnergy,
+                            balance.harvestedEnergy,
+                            pcHex
+                        );
+
+                        System.out.println("  Checkpoint Decision: " + cpDecision);
+
+                        if (cpDecision.shouldCheckpoint) {
+                            performCheckpoint(pcHex, batteryPercent, blockData.predictedTotalEnergy, balance.harvestedEnergy);
+                        }
+                    }
 
                     // Warning if harvesting can't keep up
                     if ("CONSUMING".equals(scenario)) {
@@ -261,8 +296,11 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
         double harvestedEnergy = 0.0;
 
         // Calculate actual energy harvested during real block execution time
+        // Pass current battery level for battery-aware harvesting
         if (harvestingEnabled && energyHarvester != null) {
-            harvestedEnergy = energyHarvester.calculateHarvestedEnergyForDuration(blockExecutionTimeMS);
+            double currentBatteryPercent = getBatteryPercentage();
+            harvestedEnergy = energyHarvester.calculateRealisticHarvestingWithBattery(
+                blockExecutionTimeMS, currentBatteryPercent);
         }
 
         // Apply net energy change to battery: harvest first, then consume
@@ -324,6 +362,11 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
         // Check for energy depletion
         if (energyDepleted) {
             onEnergyDepleted();
+        }
+
+        // Increment checkpoint strategy block counter
+        if (checkpointStrategy != null) {
+            checkpointStrategy.incrementBlockCount();
         }
 
         // Reset block tracking for next block
@@ -453,6 +496,10 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
                 System.err.println("Error closing block log: " + e.getMessage());
             }
         }
+
+        if (checkpointStrategy != null) {
+            checkpointStrategy.shutdown();
+        }
     }
 
     /**
@@ -465,5 +512,28 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
         this.energyDepleted = false;
         this.lowEnergyWarningShown = false;
         System.out.println("Energy reset to full capacity: " + remainingEnergyNJ + " nJ");
+    }
+
+    /**
+     * Perform a checkpoint operation
+     */
+    private void performCheckpoint(String blockAddress, double batteryPercent,
+                                   double blockConsumption, double blockHarvesting) {
+        // Deduct checkpoint cost from remaining energy
+        double checkpointCost = CheckpointStrategy.CHECKPOINT_COST_NJ;
+        remainingEnergyNJ -= checkpointCost;
+        totalConsumedEnergyNJ += checkpointCost;
+
+        if (remainingEnergyNJ < 0) {
+            remainingEnergyNJ = 0;
+            energyDepleted = true;
+        }
+
+        // Record checkpoint in strategy
+        checkpointStrategy.executeCheckpoint(blockAddress);
+
+        System.out.println("  *** CHECKPOINT CREATED ***");
+        System.out.println("  Checkpoint cost: " + checkpointCost + " nJ");
+        System.out.println("  Remaining after checkpoint: " + String.format("%.2f", remainingEnergyNJ) + " nJ");
     }
 }
