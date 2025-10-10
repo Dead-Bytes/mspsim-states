@@ -2,12 +2,6 @@
 
 ## Technical Documentation
 
-### Authors
-MSPSim Energy Extension Team
-
-### Date
-September 2025
-
 ---
 
 ## Table of Contents
