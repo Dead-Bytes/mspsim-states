@@ -1,0 +1,7 @@
+Model,Checkpoints,Total_Blocks,Final_Battery_Percent,Checkpoint_Overhead_nJ,Blocks_per_Checkpoint,MAPE_Percent,Underestimation_Percent,Characteristics
+Ensemble,52,1226,0.21,2600,23.6,-,~2%,Balanced accuracy + safety
+QLR,54,1346,0.08,2700,24.9,52.80,1.03,Conservative baseline
+GradientBoosting,52,1230,0.16,2600,23.7,31.68,1.79,Best safety (low underestimation)
+RandomForest,86,2222,0.13,4300,25.8,8.09,43.23,Alternative accurate model
+XGBoost,90,2355,0.08,4500,26.2,7.77,44.16,Best accuracy
+Original,89,2315,0.06,4450,26.0,-,-,Baseline energy model

@@ -24,7 +24,7 @@
   <!-- Settings for DEFICIT scenario: harvesting < consumption (90% of time) -->
   <!-- Tiny 0.05 cm² panel, 12% efficiency, very low 20 W/m² light = ~1 nJ/ms harvest rate -->
   <property name="ENERGY_HARVESTING_ENABLED" value="true"/>
-  <property name="HARVESTER_PANEL_AREA_CM2" value="0.05"/>
+  <property name="HARVESTER_PANEL_AREA_CM2" value="0.1"/>
   <property name="HARVESTER_PANEL_EFFICIENCY" value="12"/>
   <property name="HARVESTER_IRRADIANCE_WM2" value="20.0"/>
   <property name="HARVESTER_PROFILE" value="realistic"/>
@@ -313,6 +313,132 @@
     <echo message="Output files:"/>
     <echo message="  ./outputs/energy_log_*.csv    : Per-instruction energy consumption"/>
     <echo message="  ./outputs/battery_log_*.csv   : Battery level over time"/>
+  </target>
+
+  <!-- ========================================================================= -->
+  <!-- ML Model Comparison Testing Targets                                       -->
+  <!-- ========================================================================= -->
+
+  <!-- Macro for running a single model test -->
+  <macrodef name="run-model-test">
+    <attribute name="modelname"/>
+    <attribute name="modelfile"/>
+    <attribute name="description" default=""/>
+    <sequential>
+      <echo message="========================================"/>
+      <echo message="Testing: @{modelname}"/>
+      <echo message="@{description}"/>
+      <echo message="========================================"/>
+      <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
+        <env key="TOTAL_ENERGY_NJ" value="${TOTAL_ENERGY_NJ}"/>
+        <env key="ENERGY_MODEL_FILE" value="@{modelfile}"/>
+        <env key="ENERGY_LOGGING" value="${ENERGY_LOGGING}"/>
+        <env key="ENERGY_CHECKPOINT_THRESHOLD" value="${ENERGY_CHECKPOINT_THRESHOLD}"/>
+        <env key="STRATEGY" value="${STRATEGY}"/>
+        <env key="ENERGY_HARVESTING_ENABLED" value="${ENERGY_HARVESTING_ENABLED}"/>
+        <env key="HARVESTER_PANEL_AREA_CM2" value="${HARVESTER_PANEL_AREA_CM2}"/>
+        <env key="HARVESTER_PANEL_EFFICIENCY" value="${HARVESTER_PANEL_EFFICIENCY}"/>
+        <env key="HARVESTER_IRRADIANCE_WM2" value="${HARVESTER_IRRADIANCE_WM2}"/>
+        <env key="HARVESTER_PROFILE" value="${HARVESTER_PROFILE}"/>
+        <env key="CHECKPOINTING_ENABLED" value="${CHECKPOINTING_ENABLED}"/>
+        <arg value="benchmarks/sort.ihex"/>
+        <arg value="nogui"/>
+      </java>
+      <echo message="✓ @{modelname} test completed"/>
+      <echo message=""/>
+    </sequential>
+  </macrodef>
+
+  <!-- Master target to run all ML model tests -->
+  <target name="test-all-ml-models" depends="jar"
+          description="Run sort benchmark with all 6 ML energy prediction models">
+    <echo message=""/>
+    <echo message="╔═══════════════════════════════════════════════════════════════╗"/>
+    <echo message="║   ML Energy Prediction Model Comparison Test Suite            ║"/>
+    <echo message="║   Running sort.ihex with 6 different energy models            ║"/>
+    <echo message="╚═══════════════════════════════════════════════════════════════╝"/>
+    <echo message=""/>
+    <echo message="Configuration:"/>
+    <echo message="  Total Energy Budget: ${TOTAL_ENERGY_NJ} nJ"/>
+    <echo message="  Checkpoint Strategy: ${STRATEGY}"/>
+    <echo message="  Energy Harvesting: ${ENERGY_HARVESTING_ENABLED}"/>
+    <echo message=""/>
+
+    <run-model-test modelname="Original Energy Model"
+                    modelfile="blocks_with_real_energy.json"
+                    description="Baseline energy model"/>
+
+    <run-model-test modelname="XGBoost Model"
+                    modelfile="blocks_with_real_energy_xgboost.json"
+                    description="MAPE 7.77%, Best Accuracy"/>
+
+    <run-model-test modelname="Random Forest Model"
+                    modelfile="blocks_with_real_energy_randomforest.json"
+                    description="MAPE 8.09%, Alternative Accurate"/>
+
+    <run-model-test modelname="Gradient Boosting Model"
+                    modelfile="blocks_with_real_energy_gradientboosting.json"
+                    description="Safety-Focused, 1.79% Underestimation"/>
+
+    <run-model-test modelname="Quantile Linear Regression"
+                    modelfile="blocks_with_real_energy_qlr.json"
+                    description="Conservative Baseline"/>
+
+    <run-model-test modelname="Ensemble Model"
+                    modelfile="blocks_with_real_energy_ensemble.json"
+                    description="Balanced Accuracy + Safety"/>
+
+    <echo message=""/>
+    <echo message="╔═══════════════════════════════════════════════════════════════╗"/>
+    <echo message="║   All 6 ML Model Tests Completed!                             ║"/>
+    <echo message="╚═══════════════════════════════════════════════════════════════╝"/>
+    <echo message=""/>
+    <echo message="Results saved to: ./outputs/"/>
+    <echo message="  - energy_log_*.csv      : Instruction-level energy traces"/>
+    <echo message="  - block_log_*.csv       : Block-level energy consumption"/>
+    <echo message="  - checkpoint_log_*.csv  : Checkpoint decisions"/>
+    <echo message=""/>
+    <echo message="Next steps:"/>
+    <echo message="  1. Run: python3 outputs/analyze_ml_models.py"/>
+    <echo message="  2. Open: outputs/ml_model_comparison.ipynb"/>
+    <echo message=""/>
+  </target>
+
+  <!-- Individual test targets for convenience -->
+  <target name="test-original" depends="jar" description="Test original energy model">
+    <run-model-test modelname="Original Energy Model"
+                    modelfile="blocks_with_real_energy.json"
+                    description="Baseline energy model"/>
+  </target>
+
+  <target name="test-xgboost" depends="jar" description="Test XGBoost ML model">
+    <run-model-test modelname="XGBoost Model"
+                    modelfile="blocks_with_real_energy_xgboost.json"
+                    description="MAPE 7.77%, Best Accuracy"/>
+  </target>
+
+  <target name="test-randomforest" depends="jar" description="Test Random Forest ML model">
+    <run-model-test modelname="Random Forest Model"
+                    modelfile="blocks_with_real_energy_randomforest.json"
+                    description="MAPE 8.09%, Alternative Accurate"/>
+  </target>
+
+  <target name="test-gradientboosting" depends="jar" description="Test Gradient Boosting ML model">
+    <run-model-test modelname="Gradient Boosting Model"
+                    modelfile="blocks_with_real_energy_gradientboosting.json"
+                    description="Safety-Focused, 1.79% Underestimation"/>
+  </target>
+
+  <target name="test-qlr" depends="jar" description="Test Quantile Linear Regression model">
+    <run-model-test modelname="Quantile Linear Regression"
+                    modelfile="blocks_with_real_energy_qlr.json"
+                    description="Conservative Baseline"/>
+  </target>
+
+  <target name="test-ensemble" depends="jar" description="Test Ensemble ML model">
+    <run-model-test modelname="Ensemble Model"
+                    modelfile="blocks_with_real_energy_ensemble.json"
+                    description="Balanced Accuracy + Safety"/>
   </target>
 
   <target name="clean" description="clean up" >
