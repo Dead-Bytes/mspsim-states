@@ -388,9 +388,13 @@
                     modelfile="blocks_with_real_energy_ensemble.json"
                     description="Balanced Accuracy + Safety"/>
 
+    <run-model-test modelname="MLP Model"
+                    modelfile="blocks_with_real_energy_mlp.json"
+                    description="Neural Network Approach"/>
+
     <echo message=""/>
     <echo message="╔═══════════════════════════════════════════════════════════════╗"/>
-    <echo message="║   All 6 ML Model Tests Completed!                             ║"/>
+    <echo message="║   All 7 ML Model Tests Completed!                             ║"/>
     <echo message="╚═══════════════════════════════════════════════════════════════╝"/>
     <echo message=""/>
     <echo message="Results saved to: ./outputs/"/>
@@ -439,6 +443,115 @@
     <run-model-test modelname="Ensemble Model"
                     modelfile="blocks_with_real_energy_ensemble.json"
                     description="Balanced Accuracy + Safety"/>
+  </target>
+
+  <target name="test-mlp" depends="jar" description="Test MLP (Multi-Layer Perceptron) model">
+    <run-model-test modelname="MLP Model"
+                    modelfile="blocks_with_real_energy_mlp.json"
+                    description="Neural Network Approach"/>
+  </target>
+
+  <!-- ========================================================================= -->
+  <!-- Traditional Checkpoint Strategy Testing Targets                           -->
+  <!-- ========================================================================= -->
+
+  <!-- Macro for running traditional strategy tests -->
+  <macrodef name="run-strategy-test">
+    <attribute name="strategyname"/>
+    <attribute name="strategyvalue"/>
+    <attribute name="description" default=""/>
+    <sequential>
+      <echo message="========================================"/>
+      <echo message="Testing: @{strategyname}"/>
+      <echo message="@{description}"/>
+      <echo message="========================================"/>
+      <java fork="true" classpath="${jarfile}" classname="se.sics.mspsim.platform.sky.SkyNode">
+        <env key="TOTAL_ENERGY_NJ" value="${TOTAL_ENERGY_NJ}"/>
+        <env key="ENERGY_MODEL_FILE" value="blocks_with_real_energy.json"/>
+        <env key="ENERGY_LOGGING" value="${ENERGY_LOGGING}"/>
+        <env key="ENERGY_CHECKPOINT_THRESHOLD" value="${ENERGY_CHECKPOINT_THRESHOLD}"/>
+        <env key="CHECKPOINT_STRATEGY" value="@{strategyvalue}"/>
+        <env key="STRATEGY" value="@{strategyvalue}"/>
+        <env key="ENERGY_HARVESTING_ENABLED" value="${ENERGY_HARVESTING_ENABLED}"/>
+        <env key="HARVESTER_PANEL_AREA_CM2" value="${HARVESTER_PANEL_AREA_CM2}"/>
+        <env key="HARVESTER_PANEL_EFFICIENCY" value="${HARVESTER_PANEL_EFFICIENCY}"/>
+        <env key="HARVESTER_IRRADIANCE_WM2" value="${HARVESTER_IRRADIANCE_WM2}"/>
+        <env key="HARVESTER_PROFILE" value="${HARVESTER_PROFILE}"/>
+        <env key="CHECKPOINTING_ENABLED" value="${CHECKPOINTING_ENABLED}"/>
+        <arg value="benchmarks/sort.ihex"/>
+        <arg value="nogui"/>
+      </java>
+      <echo message="✓ @{strategyname} test completed"/>
+      <echo message=""/>
+    </sequential>
+  </macrodef>
+
+  <!-- Master target to run all traditional checkpoint strategies -->
+  <target name="test-traditional-strategies" depends="jar"
+          description="Run sort benchmark with all 4 traditional checkpoint strategies">
+    <echo message=""/>
+    <echo message="╔═══════════════════════════════════════════════════════════════╗"/>
+    <echo message="║   Traditional Checkpoint Strategy Comparison Test Suite       ║"/>
+    <echo message="║   Running sort.ihex with 4 baseline strategies                ║"/>
+    <echo message="╚═══════════════════════════════════════════════════════════════╝"/>
+    <echo message=""/>
+    <echo message="Configuration:"/>
+    <echo message="  Total Energy Budget: ${TOTAL_ENERGY_NJ} nJ"/>
+    <echo message="  Energy Model: blocks_with_real_energy.json (Original)"/>
+    <echo message="  Energy Harvesting: ${ENERGY_HARVESTING_ENABLED}"/>
+    <echo message=""/>
+
+    <run-strategy-test strategyname="JIT Strategy"
+                       strategyvalue="jit"
+                       description="Checkpoint when battery less than 20%"/>
+
+    <run-strategy-test strategyname="Periodic Strategy"
+                       strategyvalue="periodic"
+                       description="Checkpoint every 1000 cycles (unconditional)"/>
+
+    <run-strategy-test strategyname="Adaptive Strategy"
+                       strategyvalue="adaptive"
+                       description="Dual-threshold with adaptive sampling"/>
+
+    <run-strategy-test strategyname="Proposed Strategy"
+                       strategyvalue="proposed"
+                       description="Battery-region-aware (3 thresholds)"/>
+
+    <echo message=""/>
+    <echo message="╔═══════════════════════════════════════════════════════════════╗"/>
+    <echo message="║   All 4 Traditional Strategy Tests Completed!                 ║"/>
+    <echo message="╚═══════════════════════════════════════════════════════════════╝"/>
+    <echo message=""/>
+    <echo message="Results saved to: ./outputs/"/>
+    <echo message="  - checkpoint_log_*.csv  : Checkpoint decisions"/>
+    <echo message="  - block_log_*.csv       : Block-level energy"/>
+    <echo message="  - energy_log_*.csv      : Instruction traces"/>
+    <echo message=""/>
+  </target>
+
+  <!-- Individual strategy test targets -->
+  <target name="test-jit" depends="jar" description="Test JIT checkpoint strategy">
+    <run-strategy-test strategyname="JIT Strategy"
+                       strategyvalue="jit"
+                       description="Checkpoint when battery less than 20%"/>
+  </target>
+
+  <target name="test-periodic" depends="jar" description="Test Periodic checkpoint strategy">
+    <run-strategy-test strategyname="Periodic Strategy"
+                       strategyvalue="periodic"
+                       description="Checkpoint every 1000 cycles"/>
+  </target>
+
+  <target name="test-adaptive" depends="jar" description="Test Adaptive checkpoint strategy">
+    <run-strategy-test strategyname="Adaptive Strategy"
+                       strategyvalue="adaptive"
+                       description="Dual-threshold with adaptive sampling"/>
+  </target>
+
+  <target name="test-proposed" depends="jar" description="Test Proposed checkpoint strategy">
+    <run-strategy-test strategyname="Proposed Strategy"
+                       strategyvalue="proposed"
+                       description="Battery-region-aware checkpointing"/>
   </target>
 
   <target name="clean" description="clean up" >

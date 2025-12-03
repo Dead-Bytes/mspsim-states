@@ -85,7 +85,17 @@ public class InstructionEnergyMonitor implements InstructionEnergyListener {
         this.checkpointingEnabled = checkpointingEnabledStr == null || Boolean.parseBoolean(checkpointingEnabledStr);
 
         if (checkpointingEnabled) {
-            this.checkpointStrategy = new CheckpointStrategy(config.isEnergyLoggingEnabled());
+            // Read strategy type from environment
+            String strategyTypeStr = System.getenv("CHECKPOINT_STRATEGY");
+            CheckpointStrategy.StrategyType strategyType = CheckpointStrategy.StrategyType.ADAPTIVE; // default
+            if (strategyTypeStr != null) {
+                try {
+                    strategyType = CheckpointStrategy.StrategyType.valueOf(strategyTypeStr.toUpperCase());
+                } catch (IllegalArgumentException e) {
+                    System.err.println("Invalid CHECKPOINT_STRATEGY: " + strategyTypeStr + ", using ADAPTIVE");
+                }
+            }
+            this.checkpointStrategy = new CheckpointStrategy(config.isEnergyLoggingEnabled(), strategyType);
         } else {
             this.checkpointStrategy = null;
             System.out.println("Checkpointing disabled");

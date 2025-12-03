@@ -26,6 +26,16 @@ import java.io.IOException;
 
 public class CheckpointStrategy {
 
+    // ========== STRATEGY TYPES ==========
+
+    public enum StrategyType {
+        ADAPTIVE,    // Battery-region-aware (default, used by ML models)
+        JIT,         // Just-In-Time: checkpoint when battery < 20%
+        PERIODIC,    // Checkpoint every N blocks (fixed interval)
+        TRADITIONAL_ADAPTIVE,  // Dual-threshold adaptive
+        PROPOSED     // Battery-region with different thresholds
+    }
+
     // ========== CONFIGURABLE PARAMETERS ==========
 
     // Battery region thresholds (percentage)
@@ -41,6 +51,16 @@ public class CheckpointStrategy {
 
     // Checkpoint cost (energy required to save state)
     public static double CHECKPOINT_COST_NJ = 50.0;         // 50 nJ per checkpoint
+
+    // Traditional strategy parameters
+    public static double JIT_THRESHOLD = 20.0;              // JIT: checkpoint when < 20%
+    public static int PERIODIC_INTERVAL = 10;               // Periodic: every 10 blocks
+    public static double TRADITIONAL_HIGH = 50.0;           // Traditional adaptive high threshold
+    public static double TRADITIONAL_MED = 40.0;            // Traditional adaptive medium
+    public static double TRADITIONAL_LOW = 20.0;            // Traditional adaptive low
+    public static double PROPOSED_HIGH = 50.0;              // Proposed strategy high
+    public static double PROPOSED_LOW = 20.0;               // Proposed strategy low
+    public static int PROPOSED_BATCH_SIZE = 250;            // Proposed: checkpoint after 250 blocks
 
     // ========== ENUMS ==========
 
@@ -58,10 +78,12 @@ public class CheckpointStrategy {
 
     // ========== STATE TRACKING ==========
 
+    private StrategyType strategy;
     private int blocksSinceLastCheckpoint = 0;
     private int totalCheckpoints = 0;
     private long lastCheckpointTime = 0;
     private String lastCheckpointBlockAddr = "none";
+    private double prevBatteryPercent = 100.0;
 
     private PrintWriter checkpointLogWriter;
     private boolean loggingEnabled;
@@ -74,8 +96,14 @@ public class CheckpointStrategy {
     private int skippedDueToGoodRegion = 0;
 
     public CheckpointStrategy(boolean enableLogging) {
+        this(enableLogging, StrategyType.ADAPTIVE);
+    }
+
+    public CheckpointStrategy(boolean enableLogging, StrategyType strategy) {
         this.loggingEnabled = enableLogging;
+        this.strategy = strategy;
         this.lastCheckpointTime = System.currentTimeMillis();
+        System.out.println("Checkpoint Strategy: " + strategy);
 
         if (enableLogging) {
             initializeCheckpointLogging();
@@ -136,7 +164,7 @@ public class CheckpointStrategy {
     }
 
     /**
-     * Decide whether to checkpoint based on battery region, energy balance, and block count
+     * Decide whether to checkpoint based on strategy type, battery level, and energy balance
      *
      * @param batteryPercent Current battery percentage (0-100)
      * @param blockConsumption Predicted energy consumption for this block (nJ)
@@ -153,48 +181,122 @@ public class CheckpointStrategy {
         boolean shouldCP = false;
         String reason = "";
 
-        // Rule 1: GOOD region - never checkpoint
-        if (region == BatteryRegion.GOOD) {
-            shouldCP = false;
-            reason = "Battery in GOOD region (>" + GOOD_REGION_THRESHOLD + "%)";
-            skippedDueToGoodRegion++;
-        }
-        // Rule 2: MODERATE region - checkpoint only when consuming
-        else if (region == BatteryRegion.MODERATE) {
-            if (balance == EnergyBalance.CONSUMING) {
-                // Check minimum block distance
-                if (blocksSinceLastCheckpoint >= MIN_BLOCKS_BETWEEN_CP_MODERATE) {
+        // Route to appropriate strategy implementation
+        switch (strategy) {
+            case JIT:
+                // JIT: Checkpoint when battery < 20%
+                if (batteryPercent < JIT_THRESHOLD) {
                     shouldCP = true;
-                    reason = "MODERATE region + CONSUMING (deficit) + " + blocksSinceLastCheckpoint + " blocks since last CP";
+                    reason = "JIT: Battery critical (" + String.format("%.2f", batteryPercent) + "% < " + JIT_THRESHOLD + "%)";
                 } else {
                     shouldCP = false;
-                    reason = "MODERATE + CONSUMING but only " + blocksSinceLastCheckpoint +
-                           " blocks (need " + MIN_BLOCKS_BETWEEN_CP_MODERATE + ")";
-                    skippedDueToMinBlocks++;
+                    reason = "JIT: Battery sufficient (" + String.format("%.2f", batteryPercent) + "%)";
                 }
-            } else {
-                shouldCP = false;
-                reason = "MODERATE region but " + balance + " (only checkpoint when CONSUMING)";
-            }
-        }
-        // Rule 3: LOW region - checkpoint when balanced or consuming
-        else if (region == BatteryRegion.LOW) {
-            if (balance == EnergyBalance.CONSUMING || balance == EnergyBalance.BALANCED) {
-                // Check minimum block distance (lower threshold in LOW region)
-                if (blocksSinceLastCheckpoint >= MIN_BLOCKS_BETWEEN_CP_LOW) {
+                break;
+
+            case PERIODIC:
+                // Periodic: Checkpoint every N blocks
+                if (blocksSinceLastCheckpoint >= PERIODIC_INTERVAL) {
                     shouldCP = true;
-                    reason = "LOW region (<" + MODERATE_REGION_THRESHOLD + "%) + " + balance +
-                           " + " + blocksSinceLastCheckpoint + " blocks since last CP";
+                    reason = "Periodic: " + blocksSinceLastCheckpoint + " blocks since last CP (interval=" + PERIODIC_INTERVAL + ")";
                 } else {
                     shouldCP = false;
-                    reason = "LOW + " + balance + " but only " + blocksSinceLastCheckpoint +
-                           " blocks (need " + MIN_BLOCKS_BETWEEN_CP_LOW + ")";
-                    skippedDueToMinBlocks++;
+                    reason = "Periodic: Only " + blocksSinceLastCheckpoint + " blocks (need " + PERIODIC_INTERVAL + ")";
                 }
-            } else {
-                shouldCP = false;
-                reason = "LOW region but CHARGING (surplus, no need to checkpoint)";
-            }
+                break;
+
+            case TRADITIONAL_ADAPTIVE:
+                // Traditional Adaptive: Dual-threshold with skipping
+                double deltaBattery = batteryPercent - prevBatteryPercent;
+                if (batteryPercent > TRADITIONAL_HIGH) {
+                    // Above 50%: Skip if battery stable/increasing
+                    if (deltaBattery >= 0) {
+                        shouldCP = false;
+                        reason = "TraditionalAdaptive: Battery stable/increasing (" + String.format("%.2f", batteryPercent) + "%)";
+                    } else {
+                        shouldCP = true;
+                        reason = "TraditionalAdaptive: Battery dropping (" + String.format("%.2f", batteryPercent) + "%)";
+                    }
+                } else if (batteryPercent > TRADITIONAL_MED) {
+                    // 40-50%: Always checkpoint
+                    shouldCP = true;
+                    reason = "TraditionalAdaptive: Medium battery (" + String.format("%.2f", batteryPercent) + "%)";
+                } else {
+                    // Below 40%: Always checkpoint (JIT mode)
+                    shouldCP = true;
+                    reason = "TraditionalAdaptive: Low battery (" + String.format("%.2f", batteryPercent) + "%), JIT mode";
+                }
+                prevBatteryPercent = batteryPercent;
+                break;
+
+            case PROPOSED:
+                // Proposed: Battery-region with batch checkpointing
+                if (batteryPercent > PROPOSED_HIGH) {
+                    shouldCP = false;
+                    reason = "Proposed: Battery sufficient (" + String.format("%.2f", batteryPercent) + "% > " + PROPOSED_HIGH + "%)";
+                } else if (batteryPercent > PROPOSED_LOW) {
+                    // 20-50%: Checkpoint after batch
+                    if (blocksSinceLastCheckpoint >= PROPOSED_BATCH_SIZE) {
+                        shouldCP = true;
+                        reason = "Proposed: Mid battery (" + String.format("%.2f", batteryPercent) + "%) + " + blocksSinceLastCheckpoint + " blocks (batch=" + PROPOSED_BATCH_SIZE + ")";
+                    } else {
+                        shouldCP = false;
+                        reason = "Proposed: Mid battery but only " + blocksSinceLastCheckpoint + " blocks (need " + PROPOSED_BATCH_SIZE + ")";
+                    }
+                } else {
+                    // Below 20%: Always checkpoint
+                    shouldCP = true;
+                    reason = "Proposed: Critical battery (" + String.format("%.2f", batteryPercent) + "% < " + PROPOSED_LOW + "%)";
+                }
+                break;
+
+            case ADAPTIVE:
+            default:
+                // Default ADAPTIVE strategy (battery-region-aware, used by ML models)
+                // Rule 1: GOOD region - never checkpoint
+                if (region == BatteryRegion.GOOD) {
+                    shouldCP = false;
+                    reason = "Battery in GOOD region (>" + GOOD_REGION_THRESHOLD + "%)";
+                    skippedDueToGoodRegion++;
+                }
+                // Rule 2: MODERATE region - checkpoint only when consuming
+                else if (region == BatteryRegion.MODERATE) {
+                    if (balance == EnergyBalance.CONSUMING) {
+                        // Check minimum block distance
+                        if (blocksSinceLastCheckpoint >= MIN_BLOCKS_BETWEEN_CP_MODERATE) {
+                            shouldCP = true;
+                            reason = "MODERATE region + CONSUMING (deficit) + " + blocksSinceLastCheckpoint + " blocks since last CP";
+                        } else {
+                            shouldCP = false;
+                            reason = "MODERATE + CONSUMING but only " + blocksSinceLastCheckpoint +
+                                   " blocks (need " + MIN_BLOCKS_BETWEEN_CP_MODERATE + ")";
+                            skippedDueToMinBlocks++;
+                        }
+                    } else {
+                        shouldCP = false;
+                        reason = "MODERATE region but " + balance + " (only checkpoint when CONSUMING)";
+                    }
+                }
+                // Rule 3: LOW region - checkpoint when balanced or consuming
+                else if (region == BatteryRegion.LOW) {
+                    if (balance == EnergyBalance.CONSUMING || balance == EnergyBalance.BALANCED) {
+                        // Check minimum block distance (lower threshold in LOW region)
+                        if (blocksSinceLastCheckpoint >= MIN_BLOCKS_BETWEEN_CP_LOW) {
+                            shouldCP = true;
+                            reason = "LOW region (<" + MODERATE_REGION_THRESHOLD + "%) + " + balance +
+                                   " + " + blocksSinceLastCheckpoint + " blocks since last CP";
+                        } else {
+                            shouldCP = false;
+                            reason = "LOW + " + balance + " but only " + blocksSinceLastCheckpoint +
+                                   " blocks (need " + MIN_BLOCKS_BETWEEN_CP_LOW + ")";
+                            skippedDueToMinBlocks++;
+                        }
+                    } else {
+                        shouldCP = false;
+                        reason = "LOW region but CHARGING (surplus, no need to checkpoint)";
+                    }
+                }
+                break;
         }
 
         // Create decision object
